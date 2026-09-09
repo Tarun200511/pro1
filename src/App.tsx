@@ -1,0 +1,159 @@
+import { useState, useEffect } from 'react';
+import { useRoomStore } from './store/useRoomStore';
+import { Header } from './components/ui/Header';
+import { Toolbar } from './components/ui/Toolbar';
+import { InspectorPanel } from './components/ui/InspectorPanel';
+import { FurnitureDrawer } from './components/ui/FurnitureDrawer';
+import { ExportModal } from './components/ui/ExportModal';
+import { ThreeViewport } from './components/viewport3d/ThreeViewport';
+import { FloorPlanCanvas } from './components/canvas2d/FloorPlanCanvas';
+import { Box, Compass } from 'lucide-react';
+
+export function App() {
+  const viewMode = useRoomStore((state) => state.viewMode);
+  const selectedId = useRoomStore((state) => state.selectedId);
+  const selectedType = useRoomStore((state) => state.selectedType);
+  const removeObject = useRoomStore((state) => state.removeObject);
+  const removeWall = useRoomStore((state) => state.removeWall);
+  const duplicateObject = useRoomStore((state) => state.duplicateObject);
+  const clearSelection = useRoomStore((state) => state.clearSelection);
+  const undo = useRoomStore((state) => state.undo);
+  const redo = useRoomStore((state) => state.redo);
+  const setActiveTool = useRoomStore((state) => state.setActiveTool);
+
+  const [isFurnitureDrawerOpen, setIsFurnitureDrawerOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore when typing inside inputs
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement).isContentEditable
+      ) {
+        return;
+      }
+
+      // Tool shortcuts
+      if (e.key === 'v' || e.key === 'V') {
+        setActiveTool('select');
+      } else if (e.key === 'w' || e.key === 'W') {
+        setActiveTool('wall');
+      } else if (e.key === 'Escape') {
+        clearSelection();
+        setIsFurnitureDrawerOpen(false);
+      }
+
+      // Delete action
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedId) {
+          if (selectedType === 'object') {
+            removeObject(selectedId);
+          } else if (selectedType === 'wall') {
+            removeWall(selectedId);
+          }
+        }
+      }
+
+      // Undo / Redo
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+
+      // Duplicate
+      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+        e.preventDefault();
+        if (selectedId && selectedType === 'object') {
+          duplicateObject(selectedId);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedId, selectedType, removeObject, removeWall, duplicateObject, clearSelection, undo, redo, setActiveTool]);
+
+  return (
+    <div className="relative w-screen h-screen flex flex-col bg-[#0b0d13] text-white overflow-hidden select-none">
+      {/* Top VisionOS Header */}
+      <Header onOpenExportModal={() => setIsExportModalOpen(true)} />
+
+      {/* Main Viewport Container */}
+      <main className="relative flex-1 w-full h-[calc(100vh-4rem)] overflow-hidden">
+        {/* 3D Mode */}
+        {viewMode === '3d' && (
+          <div className="w-full h-full">
+            <ThreeViewport />
+          </div>
+        )}
+
+        {/* 2D Mode */}
+        {viewMode === '2d' && (
+          <div className="w-full h-full">
+            <FloorPlanCanvas />
+          </div>
+        )}
+
+        {/* Synchronized Split Mode */}
+        {viewMode === 'split' && (
+          <div className="grid grid-cols-2 w-full h-full divide-x divide-white/10">
+            {/* Left: 2D Floor Plan */}
+            <div className="relative w-full h-full">
+              <div className="absolute top-3 right-4 z-10 flex items-center gap-1.5 px-3 py-1 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-full text-[11px] font-semibold tracking-wide text-slate-300">
+                <Compass className="w-3.5 h-3.5 text-blue-400" />
+                <span>2D Architectural Blueprint</span>
+              </div>
+              <FloorPlanCanvas />
+            </div>
+
+            {/* Right: 3D WebGL */}
+            <div className="relative w-full h-full">
+              <div className="absolute top-3 right-4 z-10 flex items-center gap-1.5 px-3 py-1 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-full text-[11px] font-semibold tracking-wide text-slate-300">
+                <Box className="w-3.5 h-3.5 text-blue-400" />
+                <span>3D Spatial Perspective</span>
+              </div>
+              <ThreeViewport />
+            </div>
+          </div>
+        )}
+
+        {/* Floating Left Toolbar Dock */}
+        <div className="absolute top-4 left-4 z-30">
+          <Toolbar
+            onToggleFurnitureDrawer={() => setIsFurnitureDrawerOpen((prev) => !prev)}
+            isFurnitureDrawerOpen={isFurnitureDrawerOpen}
+          />
+        </div>
+
+        {/* Slide-out Furniture Catalog Drawer */}
+        <FurnitureDrawer
+          isOpen={isFurnitureDrawerOpen}
+          onClose={() => setIsFurnitureDrawerOpen(false)}
+        />
+
+        {/* Floating Right Inspector Panel */}
+        <div className="absolute top-4 right-4 z-30 pointer-events-auto">
+          <InspectorPanel />
+        </div>
+      </main>
+
+      {/* Export & Import Modal */}
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+      />
+    </div>
+  );
+}
+
+export default App;
