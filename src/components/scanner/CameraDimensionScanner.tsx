@@ -10,7 +10,6 @@ import {
   Check,
   RotateCcw,
   Sparkles,
-  AlertCircle,
   SwitchCamera,
   DoorOpen,
   AppWindow,
@@ -74,9 +73,10 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Camera stream state
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [, setIsStreamActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
 
@@ -117,6 +117,24 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
   const [lastSnapshot, setLastSnapshot] = useState<string | null>(null);
   const [flash, setFlash] = useState<boolean>(false);
 
+  // Request Android OS native camera permissions via @capacitor/camera
+  const requestNativeCameraPermission = useCallback(async (): Promise<boolean> => {
+    try {
+      const { Camera: CapCamera } = await import('@capacitor/camera');
+      if (CapCamera) {
+        const check = await CapCamera.checkPermissions();
+        if (check.camera !== 'granted') {
+          const res = await CapCamera.requestPermissions({ permissions: ['camera'] });
+          return res.camera === 'granted';
+        }
+        return true;
+      }
+    } catch (e) {
+      console.warn('Native camera permission request skipped or not in Capacitor context:', e);
+    }
+    return true;
+  }, []);
+
   const takeOnSpotPhoto = useCallback((): string | null => {
     if (!videoRef.current) return null;
     const video = videoRef.current;
@@ -144,49 +162,71 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
   const startCamera = useCallback(async () => {
     try {
       setCameraError(null);
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
 
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: { ideal: facingMode },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
-        audio: false
-      };
+      // Explicitly trigger Android OS system camera permission prompt
+      await requestNativeCameraPermission();
 
-      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-      setStream(newStream);
+      let newStream: MediaStream;
+      try {
+        const constraints: MediaStreamConstraints = {
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
+          audio: false
+        };
+        newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (highResErr) {
+        console.warn('High-resolution camera constraints failed, attempting fallback constraints:', highResErr);
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode } },
+          audio: false
+        });
+      }
+
+      streamRef.current = newStream;
+      setIsStreamActive(true);
       if (videoRef.current) {
         videoRef.current.srcObject = newStream;
       }
     } catch (err: any) {
       console.error('Camera access error:', err);
+      const isDenied =
+        err.name === 'NotAllowedError' ||
+        err.name === 'PermissionDeniedError' ||
+        err.message?.toLowerCase().includes('permission') ||
+        err.message?.toLowerCase().includes('denied');
+
       setCameraError(
-        err.name === 'NotAllowedError'
-          ? 'Camera permission denied. Please enable camera access in browser settings.'
+        isDenied
+          ? 'Camera permission was not granted. Tap "Grant Camera Permission" below or enable camera in your Android device settings.'
           : `Camera error: ${err.message || 'Unable to access video stream'}`
       );
     }
-  }, [facingMode]);
+  }, [facingMode, requestNativeCameraPermission]);
 
   useEffect(() => {
     if (isOpen) {
       startCamera();
     } else {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-        setStream(null);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
+      setIsStreamActive(false);
     }
     return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
     };
-  }, [isOpen]);
+  }, [isOpen, startCamera]);
 
   const toggleCamera = () => {
     triggerHaptic('light');
@@ -834,26 +874,47 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
         )}
       </div>
 
-      {/* Camera Error Screen */}
+      {/* Camera Error / Permission Request Screen */}
       {cameraError && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md">
-          <div className="max-w-md p-6 bg-slate-900 border border-red-500/30 rounded-3xl text-center space-y-4">
-            <AlertCircle className="w-12 h-12 text-red-400 mx-auto" />
-            <h3 className="text-lg font-bold">Camera Access Required</h3>
-            <p className="text-xs text-slate-300 leading-relaxed">{cameraError}</p>
-            <div className="flex gap-3 pt-2">
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-md">
+          <div className="max-w-md w-full p-6 bg-slate-900 border border-cyan-500/30 rounded-3xl text-center space-y-4 shadow-2xl animate-fade-in">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/10">
+              <Camera className="w-8 h-8 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white tracking-tight">Camera Permission Required</h3>
+              <p className="text-xs text-slate-300 leading-relaxed mt-2">{cameraError}</p>
+            </div>
+            <div className="flex flex-col gap-2.5 pt-2">
               <button
-                onClick={startCamera}
-                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-semibold"
+                id="btn-grant-camera-permission"
+                onClick={async () => {
+                  triggerHaptic('heavy');
+                  await requestNativeCameraPermission();
+                  startCamera();
+                }}
+                className="w-full py-3.5 bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-cyan-500/30 flex items-center justify-center gap-2 active:scale-95 transition-all"
               >
-                Try Again
+                <Sparkles className="w-4 h-4" />
+                Grant Camera Permission & Start
               </button>
-              <button
-                onClick={onClose}
-                className="flex-1 py-2.5 bg-white/10 hover:bg-white/15 rounded-xl text-xs font-semibold"
-              >
-                Close
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    triggerHaptic('light');
+                    startCamera();
+                  }}
+                  className="flex-1 py-2.5 bg-white/10 hover:bg-white/15 rounded-xl text-xs font-semibold text-slate-200 active:scale-95 transition-all"
+                >
+                  Try Again
+                </button>
+                <button
+                  onClick={onClose}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-semibold text-slate-400 hover:text-white active:scale-95 transition-all"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
