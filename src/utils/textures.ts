@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FloorStyle, WallStyle } from '../types/room';
+import type { FloorStyle } from '../types/room';
 
 const textureCache = new Map<string, THREE.CanvasTexture>();
 

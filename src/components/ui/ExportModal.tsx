@@ -87,8 +87,8 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-      <div className="relative w-full max-w-2xl bg-slate-900/90 backdrop-blur-2xl border border-white/15 rounded-3xl p-6 shadow-2xl text-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4 bg-black/70 backdrop-blur-md">
+      <div className="relative w-full max-w-2xl max-h-[88vh] overflow-y-auto bg-slate-900/95 backdrop-blur-2xl border border-white/15 rounded-3xl p-5 md:p-6 shadow-2xl text-white">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-white/10">
           <div className="flex items-center gap-3">

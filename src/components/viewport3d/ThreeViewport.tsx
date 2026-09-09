@@ -79,6 +79,8 @@ export const ThreeViewport: React.FC = () => {
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
+    renderer.domElement.style.touchAction = 'none';
+    renderer.domElement.style.outline = 'none';
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -498,10 +500,10 @@ export const ThreeViewport: React.FC = () => {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+      <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing touch-none" />
 
       {/* Floating 3D Controls Pill */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 p-1.5 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
+      <div className="absolute top-3 right-3 md:left-4 md:right-auto z-10 flex items-center gap-1.5 p-1.5 bg-slate-900/85 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-w-[calc(100vw-1.5rem)] overflow-x-auto no-scrollbar">
         <button
           onClick={() => setCameraPreset('perspective')}
           title="Perspective View"
@@ -624,7 +626,7 @@ export const ThreeViewport: React.FC = () => {
       )}
 
       {/* Subtle Spatial Watermark */}
-      <div className="absolute bottom-4 left-4 pointer-events-none text-[11px] font-medium tracking-wider uppercase text-slate-500/60 bg-slate-950/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5">
+      <div className="hidden sm:block absolute bottom-24 md:bottom-4 left-4 pointer-events-none text-[11px] font-medium tracking-wider uppercase text-slate-500/60 bg-slate-950/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5">
         LiDAR Parametric Mesh Engine • 60 FPS
       </div>
     </div>

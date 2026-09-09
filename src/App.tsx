@@ -4,6 +4,7 @@ import { Header } from './components/ui/Header';
 import { Toolbar } from './components/ui/Toolbar';
 import { InspectorPanel } from './components/ui/InspectorPanel';
 import { FurnitureDrawer } from './components/ui/FurnitureDrawer';
+import { MobileBottomBar } from './components/ui/MobileBottomBar';
 import { ExportModal } from './components/ui/ExportModal';
 import { ThreeViewport } from './components/viewport3d/ThreeViewport';
 import { FloorPlanCanvas } from './components/canvas2d/FloorPlanCanvas';
@@ -22,7 +23,15 @@ export function App() {
   const setActiveTool = useRoomStore((state) => state.setActiveTool);
 
   const [isFurnitureDrawerOpen, setIsFurnitureDrawerOpen] = useState(false);
+  const [isMobileInspectorOpen, setIsMobileInspectorOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  // Auto-open mobile inspector when an element is selected on mobile
+  useEffect(() => {
+    if (selectedId) {
+      setIsMobileInspectorOpen(true);
+    }
+  }, [selectedId]);
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -44,6 +53,7 @@ export function App() {
       } else if (e.key === 'Escape') {
         clearSelection();
         setIsFurnitureDrawerOpen(false);
+        setIsMobileInspectorOpen(false);
       }
 
       // Delete action
@@ -84,12 +94,12 @@ export function App() {
   }, [selectedId, selectedType, removeObject, removeWall, duplicateObject, clearSelection, undo, redo, setActiveTool]);
 
   return (
-    <div className="relative w-screen h-screen flex flex-col bg-[#0b0d13] text-white overflow-hidden select-none">
+    <div className="relative w-screen h-[100dvh] flex flex-col bg-[#0b0d13] text-white overflow-hidden select-none">
       {/* Top VisionOS Header */}
       <Header onOpenExportModal={() => setIsExportModalOpen(true)} />
 
       {/* Main Viewport Container */}
-      <main className="relative flex-1 w-full h-[calc(100vh-4rem)] overflow-hidden">
+      <main className="relative flex-1 w-full h-[calc(100dvh-4rem)] overflow-hidden pb-16 md:pb-0">
         {/* 3D Mode */}
         {viewMode === '3d' && (
           <div className="w-full h-full">
@@ -104,9 +114,9 @@ export function App() {
           </div>
         )}
 
-        {/* Synchronized Split Mode */}
+        {/* Synchronized Split Mode (Desktop Only) */}
         {viewMode === 'split' && (
-          <div className="grid grid-cols-2 w-full h-full divide-x divide-white/10">
+          <div className="grid grid-cols-1 md:grid-cols-2 w-full h-full divide-y md:divide-y-0 md:divide-x divide-white/10">
             {/* Left: 2D Floor Plan */}
             <div className="relative w-full h-full">
               <div className="absolute top-3 right-4 z-10 flex items-center gap-1.5 px-3 py-1 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-full text-[11px] font-semibold tracking-wide text-slate-300">
@@ -127,8 +137,8 @@ export function App() {
           </div>
         )}
 
-        {/* Floating Left Toolbar Dock */}
-        <div className="absolute top-4 left-4 z-30">
+        {/* Floating Left Toolbar Dock (Desktop Only) */}
+        <div className="hidden md:block absolute top-4 left-4 z-30">
           <Toolbar
             onToggleFurnitureDrawer={() => setIsFurnitureDrawerOpen((prev) => !prev)}
             isFurnitureDrawerOpen={isFurnitureDrawerOpen}
@@ -141,11 +151,28 @@ export function App() {
           onClose={() => setIsFurnitureDrawerOpen(false)}
         />
 
-        {/* Floating Right Inspector Panel */}
-        <div className="absolute top-4 right-4 z-30 pointer-events-auto">
-          <InspectorPanel />
+        {/* Floating Right Inspector Panel (Desktop floating, Mobile bottom-sheet) */}
+        <div className="md:absolute md:top-4 md:right-4 z-30 pointer-events-auto">
+          <InspectorPanel
+            isOpenOnMobile={isMobileInspectorOpen}
+            onCloseMobile={() => setIsMobileInspectorOpen(false)}
+          />
         </div>
       </main>
+
+      {/* Mobile Bottom Navigation & Quick Actions Dock */}
+      <MobileBottomBar
+        onToggleFurnitureDrawer={() => {
+          setIsFurnitureDrawerOpen((prev) => !prev);
+          if (!isFurnitureDrawerOpen) setIsMobileInspectorOpen(false);
+        }}
+        isFurnitureDrawerOpen={isFurnitureDrawerOpen}
+        onToggleInspector={() => {
+          setIsMobileInspectorOpen((prev) => !prev);
+          if (!isMobileInspectorOpen) setIsFurnitureDrawerOpen(false);
+        }}
+        isInspectorOpen={isMobileInspectorOpen}
+      />
 
       {/* Export & Import Modal */}
       <ExportModal

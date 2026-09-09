@@ -2,6 +2,7 @@ import React from 'react';
 import { useRoomStore } from '../../store/useRoomStore';
 import type { FurnitureCategory, FurnitureType, RoomObject } from '../../types/room';
 import { Armchair, Bed, Monitor, Refrigerator, Sofa, Table, Archive, X, Plus } from 'lucide-react';
+import { triggerHaptic } from '../../utils/sound';
 
 interface CatalogItem {
   type: FurnitureType;
@@ -134,6 +135,7 @@ export const FurnitureDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
       : CATALOG_ITEMS.filter((item) => item.category === activeCategory);
 
   const handleAddItem = (item: CatalogItem) => {
+    triggerHaptic('light');
     const newObj: RoomObject = {
       id: `obj-${Date.now()}`,
       category: item.category,
@@ -148,11 +150,16 @@ export const FurnitureDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="absolute top-16 left-4 z-40 w-80 max-h-[calc(100vh-6rem)] flex flex-col bg-slate-900/90 backdrop-blur-2xl border border-white/15 rounded-3xl p-5 shadow-2xl text-white select-none">
+    <div className="fixed inset-x-0 bottom-0 z-50 max-h-[82vh] md:fixed md:inset-auto md:top-16 md:left-4 md:z-40 md:w-80 md:max-h-[calc(100vh-6rem)] flex flex-col bg-slate-900/95 backdrop-blur-2xl border-t md:border border-white/15 rounded-t-3xl md:rounded-3xl p-5 pb-[calc(var(--sab)+1.5rem)] md:pb-5 shadow-2xl text-white select-none">
+      {/* Mobile Top Sheet Grab Handle */}
+      <div className="md:hidden flex flex-col items-center pb-2">
+        <div className="w-10 h-1 bg-white/30 rounded-full mb-2" />
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between pb-3 border-b border-white/10">
         <div>
-          <h3 className="font-bold text-sm tracking-tight">RoomPlan Object Library</h3>
+          <h3 className="font-bold text-sm tracking-tight">Object Library</h3>
           <p className="text-[11px] text-slate-400">Parametric spatial CAD models</p>
         </div>
         <button

@@ -143,3 +143,32 @@ export function playUiClick() {
     // Ignore
   }
 }
+
+/**
+ * Mobile haptic vibration feedback
+ */
+export async function triggerHaptic(type: 'light' | 'medium' | 'heavy' | 'selection' | 'success' = 'light') {
+  try {
+    if (typeof window !== 'undefined') {
+      const { Haptics, ImpactStyle, NotificationType } = await import('@capacitor/haptics');
+      if (type === 'selection') {
+        await Haptics.selectionStart();
+      } else if (type === 'success') {
+        await Haptics.notification({ type: NotificationType.Success });
+      } else {
+        const style = type === 'heavy' ? ImpactStyle.Heavy : type === 'medium' ? ImpactStyle.Medium : ImpactStyle.Light;
+        await Haptics.impact({ style });
+      }
+      return;
+    }
+  } catch {
+    // Fallback to Web Vibration API if supported
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      if (type === 'heavy') navigator.vibrate(35);
+      else if (type === 'medium') navigator.vibrate(20);
+      else if (type === 'success') navigator.vibrate([15, 40, 15]);
+      else navigator.vibrate(10);
+    }
+  }
+}
+

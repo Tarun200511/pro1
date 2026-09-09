@@ -144,16 +144,17 @@ export const ScannerOverlay: React.FC = () => {
       <button
         id="btn-scan-room"
         onClick={() => setIsModalOpen(true)}
-        className="flex items-center gap-2 px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-blue-500/25 transition-all active:scale-95"
+        className="flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-[11px] md:text-xs font-semibold rounded-xl shadow-lg shadow-blue-500/25 transition-all active:scale-95"
       >
-        <Scan className="w-4 h-4 animate-pulse" />
-        <span>Scan Room</span>
+        <Scan className="w-3.5 h-3.5 md:w-4 md:h-4 animate-pulse" />
+        <span className="hidden sm:inline">Scan Room</span>
+        <span className="sm:hidden">Scan</span>
       </button>
 
       {/* Preset Selector Modal */}
       {isModalOpen && !isScanning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-          <div className="relative w-full max-w-lg bg-slate-900/90 backdrop-blur-2xl border border-white/15 rounded-3xl p-6 shadow-2xl text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+          <div className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto bg-slate-900/95 backdrop-blur-2xl border border-white/15 rounded-3xl p-5 md:p-6 shadow-2xl text-white">
             {/* Header */}
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
               <div className="flex items-center gap-3">

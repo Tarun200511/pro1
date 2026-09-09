@@ -3,6 +3,7 @@ import { useRoomStore } from '../../store/useRoomStore';
 import type { Wall } from '../../types/room';
 import { snapToGrid, distance2D, angle2D, formatDimension, formatArea, calculateRoomArea } from '../../utils/math';
 import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { triggerHaptic } from '../../utils/sound';
 
 interface DragState {
   type: 'wall-start' | 'wall-end' | 'wall-body' | 'object' | 'object-rotate' | 'pan';
@@ -40,6 +41,14 @@ export const FloorPlanCanvas: React.FC = () => {
   const [mouseWorld, setMouseWorld] = useState<{ x: number; z: number }>({ x: 0, z: 0 });
   const [wallDraftStart, setWallDraftStart] = useState<{ x: number; z: number } | null>(null);
   const [hoveredEndpoint, setHoveredEndpoint] = useState<{ wallId: string; point: 'start' | 'end' } | null>(null);
+
+  // Multi-touch tracking for pinch-to-zoom and 2-finger pan
+  const touchStateRef = useRef<{
+    initialDist: number;
+    initialZoom: number;
+    initialPan: { x: number; y: number };
+    midpoint: { x: number; y: number };
+  } | null>(null);
 
   // Convert World Coordinates (meters) to Canvas Coordinates (pixels)
   const worldToCanvas = useCallback(
@@ -412,22 +421,22 @@ export const FloorPlanCanvas: React.FC = () => {
     worldToCanvas
   ]);
 
-  // Handle Mouse Down on 2D Canvas
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Core Pointer Down handler (shared by Mouse and Touch)
+  const processPointerDown = (clientX: number, clientY: number, isPanGesture = false, isTouch = false) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const world = canvasToWorld(cx, cy, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+    const cx = clientX - rect.left;
+    const cy = clientY - rect.top;
+    const dpr = window.devicePixelRatio || 1;
+    const world = canvasToWorld(cx, cy, canvas.width / dpr, canvas.height / dpr);
 
-    // Middle click or space+click = Pan canvas
-    if (e.button === 1 || e.shiftKey) {
+    if (isPanGesture) {
       setDragState({
         type: 'pan',
         targetId: '',
-        startX: e.clientX,
-        startY: e.clientY
+        startX: clientX,
+        startY: clientY
       });
       return;
     }
@@ -441,11 +450,13 @@ export const FloorPlanCanvas: React.FC = () => {
       };
 
       if (!wallDraftStart) {
+        triggerHaptic('light');
         setWallDraftStart(snappedPt);
       } else {
         // Complete current wall segment
         const dist = distance2D(wallDraftStart, snappedPt);
         if (dist > 0.3) {
+          triggerHaptic('medium');
           const newWall: Wall = {
             id: `wall-${Date.now()}`,
             name: `Wall ${walls.length + 1}`,
@@ -462,17 +473,22 @@ export const FloorPlanCanvas: React.FC = () => {
       return;
     }
 
+    // Touch hit margins
+    const endpointRadius = isTouch ? 26 : 12;
+    const rotateRadius = isTouch ? 24 : 12;
+
     // 2. Check Click on Furniture Object or its Rotation Handle
     for (const obj of objects) {
       const isSelected = selectedId === obj.id;
-      const p = worldToCanvas(obj.position.x, obj.position.z, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+      const p = worldToCanvas(obj.position.x, obj.position.z, canvas.width / dpr, canvas.height / dpr);
       const wPx = obj.dimensions.width * zoom;
       const dPx = obj.dimensions.depth * zoom;
 
       // Rotation handle check if selected
       if (isSelected) {
         const handleDist = Math.hypot(cx - p.x, cy - (p.y + dPx / 2 + 22));
-        if (handleDist <= 12) {
+        if (handleDist <= rotateRadius) {
+          triggerHaptic('selection');
           setDragState({
             type: 'object-rotate',
             targetId: obj.id,
@@ -487,13 +503,14 @@ export const FloorPlanCanvas: React.FC = () => {
       // Check object bounding box
       const dx = cx - p.x;
       const dy = cy - p.y;
-      // Undo rotation to check local box
       const cos = Math.cos(obj.rotation.yaw);
       const sin = Math.sin(obj.rotation.yaw);
       const localX = dx * cos - dy * sin;
       const localY = dx * sin + dy * cos;
+      const hitMargin = isTouch ? 12 : 0;
 
-      if (Math.abs(localX) <= wPx / 2 && Math.abs(localY) <= dPx / 2) {
+      if (Math.abs(localX) <= wPx / 2 + hitMargin && Math.abs(localY) <= dPx / 2 + hitMargin) {
+        triggerHaptic('light');
         selectElement(obj.id, 'object');
         setDragState({
           type: 'object',
@@ -508,10 +525,11 @@ export const FloorPlanCanvas: React.FC = () => {
 
     // 3. Check Wall Endpoints
     for (const wall of walls) {
-      const p1 = worldToCanvas(wall.start.x, wall.start.z, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
-      const p2 = worldToCanvas(wall.end.x, wall.end.z, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+      const p1 = worldToCanvas(wall.start.x, wall.start.z, canvas.width / dpr, canvas.height / dpr);
+      const p2 = worldToCanvas(wall.end.x, wall.end.z, canvas.width / dpr, canvas.height / dpr);
 
-      if (Math.hypot(cx - p1.x, cy - p1.y) <= 12) {
+      if (Math.hypot(cx - p1.x, cy - p1.y) <= endpointRadius) {
+        triggerHaptic('light');
         selectElement(wall.id, 'wall');
         setDragState({
           type: 'wall-start',
@@ -522,7 +540,8 @@ export const FloorPlanCanvas: React.FC = () => {
         return;
       }
 
-      if (Math.hypot(cx - p2.x, cy - p2.y) <= 12) {
+      if (Math.hypot(cx - p2.x, cy - p2.y) <= endpointRadius) {
+        triggerHaptic('light');
         selectElement(wall.id, 'wall');
         setDragState({
           type: 'wall-end',
@@ -536,10 +555,9 @@ export const FloorPlanCanvas: React.FC = () => {
 
     // 4. Check Wall Body
     for (const wall of walls) {
-      const p1 = worldToCanvas(wall.start.x, wall.start.z, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
-      const p2 = worldToCanvas(wall.end.x, wall.end.z, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+      const p1 = worldToCanvas(wall.start.x, wall.start.z, canvas.width / dpr, canvas.height / dpr);
+      const p2 = worldToCanvas(wall.end.x, wall.end.z, canvas.width / dpr, canvas.height / dpr);
 
-      // Point-to-segment distance in pixels
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
       const lenSq = dx * dx + dy * dy;
@@ -549,7 +567,8 @@ export const FloorPlanCanvas: React.FC = () => {
         const projY = p1.y + t * dy;
         const distPx = Math.hypot(cx - projX, cy - projY);
 
-        if (distPx <= Math.max(8, (wall.thickness * zoom) / 2 + 4)) {
+        if (distPx <= Math.max(isTouch ? 18 : 8, (wall.thickness * zoom) / 2 + (isTouch ? 12 : 4))) {
+          triggerHaptic('light');
           selectElement(wall.id, 'wall');
           return;
         }
@@ -561,19 +580,20 @@ export const FloorPlanCanvas: React.FC = () => {
     setDragState({
       type: 'pan',
       targetId: '',
-      startX: e.clientX,
-      startY: e.clientY
+      startX: clientX,
+      startY: clientY
     });
   };
 
-  // Handle Mouse Move
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Core Pointer Move handler (shared by Mouse and Touch)
+  const processPointerMove = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const world = canvasToWorld(cx, cy, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+    const cx = clientX - rect.left;
+    const cy = clientY - rect.top;
+    const dpr = window.devicePixelRatio || 1;
+    const world = canvasToWorld(cx, cy, canvas.width / dpr, canvas.height / dpr);
 
     const snapVal = gridSnap ? 0.1 : 0.01;
     const snappedWorld = {
@@ -585,10 +605,10 @@ export const FloorPlanCanvas: React.FC = () => {
     // If Dragging
     if (dragState) {
       if (dragState.type === 'pan') {
-        const dx = e.clientX - dragState.startX;
-        const dy = e.clientY - dragState.startY;
+        const dx = clientX - dragState.startX;
+        const dy = clientY - dragState.startY;
         setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
-        setDragState((prev) => (prev ? { ...prev, startX: e.clientX, startY: e.clientY } : null));
+        setDragState((prev) => (prev ? { ...prev, startX: clientX, startY: clientY } : null));
         return;
       }
 
@@ -606,9 +626,8 @@ export const FloorPlanCanvas: React.FC = () => {
       if (dragState.type === 'object-rotate') {
         const obj = objects.find((o) => o.id === dragState.targetId);
         if (obj) {
-          const p = worldToCanvas(obj.position.x, obj.position.z, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+          const p = worldToCanvas(obj.position.x, obj.position.z, canvas.width / dpr, canvas.height / dpr);
           const angle = Math.atan2(cy - p.y, cx - p.x);
-          // Snap angle to 15 degrees if gridSnap
           const snapAngle = gridSnap ? Math.round(angle / (Math.PI / 12)) * (Math.PI / 12) : angle;
           updateObject(dragState.targetId, {
             rotation: { yaw: Number(snapAngle.toFixed(3)) }
@@ -635,14 +654,14 @@ export const FloorPlanCanvas: React.FC = () => {
     // Hover endpoint detection
     let foundHover: { wallId: string; point: 'start' | 'end' } | null = null;
     for (const wall of walls) {
-      const p1 = worldToCanvas(wall.start.x, wall.start.z, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
-      const p2 = worldToCanvas(wall.end.x, wall.end.z, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+      const p1 = worldToCanvas(wall.start.x, wall.start.z, canvas.width / dpr, canvas.height / dpr);
+      const p2 = worldToCanvas(wall.end.x, wall.end.z, canvas.width / dpr, canvas.height / dpr);
 
-      if (Math.hypot(cx - p1.x, cy - p1.y) <= 12) {
+      if (Math.hypot(cx - p1.x, cy - p1.y) <= 16) {
         foundHover = { wallId: wall.id, point: 'start' };
         break;
       }
-      if (Math.hypot(cx - p2.x, cy - p2.y) <= 12) {
+      if (Math.hypot(cx - p2.x, cy - p2.y) <= 16) {
         foundHover = { wallId: wall.id, point: 'end' };
         break;
       }
@@ -650,9 +669,83 @@ export const FloorPlanCanvas: React.FC = () => {
     setHoveredEndpoint(foundHover);
   };
 
+  // Mouse Down
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    processPointerDown(e.clientX, e.clientY, e.button === 1 || e.shiftKey, false);
+  };
+
+  // Mouse Move
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    processPointerMove(e.clientX, e.clientY);
+  };
+
   // Mouse Up
   const handleMouseUp = () => {
     setDragState(null);
+  };
+
+  // Touch handlers: 1-finger draw/drag, 2-finger pinch-to-zoom & pan
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      const mid = {
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2
+      };
+      touchStateRef.current = {
+        initialDist: dist,
+        initialZoom: zoom,
+        initialPan: { ...pan },
+        midpoint: mid
+      };
+      setDragState(null);
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      processPointerDown(touch.clientX, touch.clientY, false, true);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 2 && touchStateRef.current) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      const currentMid = {
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2
+      };
+
+      const scale = currentDist / touchStateRef.current.initialDist;
+      const newZoom = Math.max(25, Math.min(180, touchStateRef.current.initialZoom * scale));
+      setZoom(newZoom);
+
+      const dx = currentMid.x - touchStateRef.current.midpoint.x;
+      const dy = currentMid.y - touchStateRef.current.midpoint.y;
+      setPan({
+        x: touchStateRef.current.initialPan.x + dx,
+        y: touchStateRef.current.initialPan.y + dy
+      });
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      processPointerMove(touch.clientX, touch.clientY);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length < 2) {
+      touchStateRef.current = null;
+    }
+    if (e.touches.length === 0) {
+      setDragState(null);
+    }
   };
 
   // Wheel Zoom
@@ -683,57 +776,61 @@ export const FloorPlanCanvas: React.FC = () => {
   const roomArea = calculateRoomArea(walls);
 
   return (
-    <div className="relative w-full h-full overflow-hidden select-none bg-[#0f1117]">
+    <div className="relative w-full h-full overflow-hidden select-none bg-[#0f1117] touch-none">
       <canvas
         ref={canvasRef}
-        className="w-full h-full cursor-crosshair"
+        className="w-full h-full cursor-crosshair touch-none"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
         onWheel={handleWheel}
         onDoubleClick={handleDoubleClick}
       />
 
       {/* Floating 2D Controls Pill */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 p-1.5 bg-slate-900/75 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
+      <div className="absolute top-3 right-3 md:left-4 md:right-auto z-10 flex items-center gap-1.5 p-1.5 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
         <button
           onClick={() => setZoom((z) => Math.min(180, z * 1.15))}
           title="Zoom In"
-          className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+          className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
         <button
           onClick={() => setZoom((z) => Math.max(25, z * 0.85))}
           title="Zoom Out"
-          className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+          className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
         >
           <ZoomOut className="w-4 h-4" />
         </button>
         <button
           onClick={resetView}
           title="Reset Canvas View"
-          className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+          className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
         >
           <Maximize2 className="w-4 h-4" />
         </button>
 
-        <div className="w-px h-5 bg-white/15 mx-1" />
+        <div className="hidden sm:block w-px h-5 bg-white/15 mx-1" />
 
-        <div className="flex items-center gap-2 px-2 text-xs font-medium text-slate-300">
+        <div className="hidden sm:flex items-center gap-2 px-2 text-xs font-medium text-slate-300">
           <span className="text-slate-400">Scale:</span>
           <span className="font-mono text-blue-400">{Math.round(zoom)} px/m</span>
         </div>
 
         {activeTool === 'wall' && (
-          <div className="flex items-center gap-1.5 pl-2 border-l border-white/15 text-xs text-amber-400 font-medium">
-            <span>Drawing Wall (Esc or Dbl-Click to Finish)</span>
+          <div className="hidden md:flex items-center gap-1.5 pl-2 border-l border-white/15 text-xs text-amber-400 font-medium">
+            <span>Drawing Wall</span>
           </div>
         )}
       </div>
 
-      {/* Blueprint Live Area Badge */}
-      <div className="absolute bottom-4 left-4 pointer-events-none flex items-center gap-3 bg-slate-950/70 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 shadow-lg text-xs">
+      {/* Blueprint Live Area Badge (Positioned safely above mobile dock) */}
+      <div className="absolute bottom-24 md:bottom-4 left-3 md:left-4 pointer-events-none flex flex-wrap items-center gap-2 md:gap-3 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 md:px-3.5 md:py-2 rounded-2xl border border-white/10 shadow-lg text-[11px] md:text-xs">
         <div className="flex items-center gap-1.5 text-slate-300">
           <span className="text-slate-400">Area:</span>
           <span className="font-semibold text-white">{formatArea(roomArea, unit)}</span>
@@ -748,8 +845,8 @@ export const FloorPlanCanvas: React.FC = () => {
           <span className="text-slate-400">Objects:</span>
           <span className="font-semibold text-white">{objects.length}</span>
         </div>
-        <span className="text-slate-600">•</span>
-        <div className="flex items-center gap-1 text-blue-400 font-mono text-[11px]">
+        <span className="hidden sm:inline text-slate-600">•</span>
+        <div className="hidden sm:flex items-center gap-1 text-blue-400 font-mono text-[11px]">
           X: {mouseWorld.x.toFixed(1)}m, Z: {mouseWorld.z.toFixed(1)}m
         </div>
       </div>

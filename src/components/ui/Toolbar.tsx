@@ -31,7 +31,7 @@ export const Toolbar: React.FC<Props> = ({ onToggleFurnitureDrawer, isFurnitureD
   const canRedo = history.future.length > 0;
 
   return (
-    <div className="flex flex-col items-center gap-1.5 p-2 bg-slate-900/85 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl select-none">
+    <div className="hidden md:flex flex-col items-center gap-1.5 p-2 bg-slate-900/85 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl select-none">
       {/* Select Tool */}
       <button
         id="tool-select"

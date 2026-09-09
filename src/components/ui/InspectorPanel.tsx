@@ -17,11 +17,18 @@ import {
   Flame,
   Moon,
   Upload,
-  Image,
   Layers
 } from 'lucide-react';
 
-export const InspectorPanel: React.FC = () => {
+interface InspectorPanelProps {
+  isOpenOnMobile?: boolean;
+  onCloseMobile?: () => void;
+}
+
+export const InspectorPanel: React.FC<InspectorPanelProps> = ({
+  isOpenOnMobile = false,
+  onCloseMobile
+}) => {
   const selectedId = useRoomStore((state) => state.selectedId);
   const selectedType = useRoomStore((state) => state.selectedType);
   const walls = useRoomStore((state) => state.walls);
@@ -65,8 +72,27 @@ export const InspectorPanel: React.FC = () => {
   return (
     <div
       id="inspector-panel"
-      className="w-80 max-h-[calc(100vh-6rem)] overflow-y-auto bg-slate-900/85 backdrop-blur-2xl border border-white/10 rounded-3xl p-5 shadow-2xl text-white select-none transition-all"
+      className={`${
+        isOpenOnMobile
+          ? 'fixed inset-x-0 bottom-0 z-50 max-h-[82vh] rounded-t-3xl border-t border-white/20 p-5 pb-[calc(var(--sab)+1.5rem)] shadow-2xl block'
+          : 'hidden'
+      } md:block md:static md:w-80 md:max-h-[calc(100vh-6rem)] overflow-y-auto bg-slate-900/90 backdrop-blur-2xl md:border md:border-white/10 md:rounded-3xl md:p-5 md:shadow-2xl text-white select-none transition-all`}
     >
+      {/* Mobile Top Sheet Grab Handle & Dismiss Bar */}
+      <div className="md:hidden flex flex-col items-center pb-3">
+        <div className="w-10 h-1 bg-white/30 rounded-full mb-2" />
+        <div className="w-full flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            {selectedObj ? 'Item Properties' : selectedWall ? 'Wall Properties' : 'Room Settings'}
+          </span>
+          <button
+            onClick={onCloseMobile}
+            className="text-xs font-bold px-3 py-1 bg-blue-600/30 border border-blue-500/40 text-blue-300 rounded-full active:scale-95"
+          >
+            Done
+          </button>
+        </div>
+      </div>
       {/* 1. FURNITURE OBJECT INSPECTOR */}
       {selectedObj && (
         <div className="space-y-4">
