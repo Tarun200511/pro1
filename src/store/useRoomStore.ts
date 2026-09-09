@@ -64,6 +64,9 @@ interface RoomState {
   scanProgress: number;
   scanStage: string;
   selectedScanPreset: string | null;
+  isCameraScannerOpen: boolean;
+  openCameraScanner: () => void;
+  closeCameraScanner: () => void;
 
   // Sound
   isMuted: boolean;
@@ -244,6 +247,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
   scanProgress: 0,
   scanStage: '',
   selectedScanPreset: null,
+  isCameraScannerOpen: false,
 
   isMuted: false,
 
@@ -467,6 +471,16 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       scanStage: '',
       selectedScanPreset: null
     });
+  },
+
+  openCameraScanner: () => {
+    playUiClick();
+    set({ isCameraScannerOpen: true });
+  },
+
+  closeCameraScanner: () => {
+    playUiClick();
+    set({ isCameraScannerOpen: false });
   },
 
   loadPreset: (presetId) => {

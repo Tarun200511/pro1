@@ -8,6 +8,7 @@ import { MobileBottomBar } from './components/ui/MobileBottomBar';
 import { ExportModal } from './components/ui/ExportModal';
 import { ThreeViewport } from './components/viewport3d/ThreeViewport';
 import { FloorPlanCanvas } from './components/canvas2d/FloorPlanCanvas';
+import { CameraDimensionScanner } from './components/scanner/CameraDimensionScanner';
 import { Box, Compass } from 'lucide-react';
 
 export function App() {
@@ -21,6 +22,8 @@ export function App() {
   const undo = useRoomStore((state) => state.undo);
   const redo = useRoomStore((state) => state.redo);
   const setActiveTool = useRoomStore((state) => state.setActiveTool);
+  const isCameraScannerOpen = useRoomStore((state) => state.isCameraScannerOpen);
+  const closeCameraScanner = useRoomStore((state) => state.closeCameraScanner);
 
   const [isFurnitureDrawerOpen, setIsFurnitureDrawerOpen] = useState(false);
   const [isMobileInspectorOpen, setIsMobileInspectorOpen] = useState(false);
@@ -179,6 +182,14 @@ export function App() {
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
       />
+
+      {/* Live AR Camera Dimension & On-Spot Scanner */}
+      {isCameraScannerOpen && (
+        <CameraDimensionScanner
+          isOpen={isCameraScannerOpen}
+          onClose={closeCameraScanner}
+        />
+      )}
     </div>
   );
 }

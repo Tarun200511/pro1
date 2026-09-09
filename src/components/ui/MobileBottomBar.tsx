@@ -12,7 +12,8 @@ import {
   Redo2,
   Grid,
   Trash2,
-  Copy
+  Copy,
+  Camera
 } from 'lucide-react';
 
 interface Props {
@@ -42,6 +43,7 @@ export const MobileBottomBar: React.FC<Props> = ({
   const undo = useRoomStore((state) => state.undo);
   const redo = useRoomStore((state) => state.redo);
   const history = useRoomStore((state) => state.history);
+  const openCameraScanner = useRoomStore((state) => state.openCameraScanner);
 
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
@@ -179,6 +181,26 @@ export const MobileBottomBar: React.FC<Props> = ({
             </div>
             <span className="text-[10px] font-semibold tracking-tight">
               {activeTool === 'wall' ? 'Drawing' : 'Select'}
+            </span>
+          </button>
+
+          {/* HERO ON-SPOT CAMERA CAPTURE BUTTON */}
+          <button
+            id="mobile-btn-camera-capture"
+            onClick={() => {
+              triggerHaptic('heavy');
+              openCameraScanner();
+            }}
+            className="flex flex-col items-center -mt-6 group active:scale-90 transition-all z-10"
+            title="On-Spot Camera Capture"
+          >
+            <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-cyan-400 via-blue-600 to-indigo-600 p-0.5 shadow-2xl shadow-cyan-500/50 flex items-center justify-center animate-pulse hover:shadow-cyan-400/80">
+              <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-cyan-400 group-hover:text-white transition-colors">
+                <Camera className="w-6 h-6" />
+              </div>
+            </div>
+            <span className="text-[10px] font-bold text-cyan-400 mt-1 uppercase tracking-wider drop-shadow">
+              Capture
             </span>
           </button>
 

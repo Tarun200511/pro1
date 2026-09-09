@@ -8,8 +8,10 @@ import {
   Undo2,
   Redo2,
   Volume2,
-  VolumeX
+  VolumeX,
+  Camera
 } from 'lucide-react';
+import { triggerHaptic } from '../../utils/sound';
 
 interface Props {
   onToggleFurnitureDrawer: () => void;
@@ -26,6 +28,7 @@ export const Toolbar: React.FC<Props> = ({ onToggleFurnitureDrawer, isFurnitureD
   const undo = useRoomStore((state) => state.undo);
   const redo = useRoomStore((state) => state.redo);
   const history = useRoomStore((state) => state.history);
+  const openCameraScanner = useRoomStore((state) => state.openCameraScanner);
 
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
@@ -72,6 +75,19 @@ export const Toolbar: React.FC<Props> = ({ onToggleFurnitureDrawer, isFurnitureD
         }`}
       >
         <Armchair className="w-5 h-5" />
+      </button>
+
+      {/* On-Spot Camera Scanner Tool */}
+      <button
+        id="tool-camera-scanner"
+        onClick={() => {
+          triggerHaptic('heavy');
+          openCameraScanner();
+        }}
+        title="On-Spot Camera Capture"
+        className="p-2.5 rounded-xl text-cyan-400 hover:text-white hover:bg-cyan-500/20 active:scale-95 transition-all"
+      >
+        <Camera className="w-5 h-5" />
       </button>
 
       <div className="w-6 h-px bg-white/15 my-1" />

@@ -50,6 +50,7 @@ interface CapturedFurniture {
   dimensions: { width: number; depth: number; height: number };
   rotationYaw: number;
   confidence: 'high' | 'medium';
+  photoSnapshotUrl?: string;
 }
 
 import { APPLE_16_CATEGORIES, type AppleCategoryConfig } from '../../utils/appleCategories';
@@ -111,6 +112,33 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
 
   // Real-time audio/haptic guidance prompt
   const [coachingCue, setCoachingCue] = useState<string>('Scan floor plane slowly. Aim reticle at room corners.');
+
+  // On-Spot Photo Snapshot State
+  const [lastSnapshot, setLastSnapshot] = useState<string | null>(null);
+  const [flash, setFlash] = useState<boolean>(false);
+
+  const takeOnSpotPhoto = useCallback((): string | null => {
+    if (!videoRef.current) return null;
+    const video = videoRef.current;
+    if (video.videoWidth === 0) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+    setLastSnapshot(dataUrl);
+
+    playMeshDetect();
+    triggerHaptic('heavy');
+    setFlash(true);
+    setTimeout(() => setFlash(false), 120);
+
+    return dataUrl;
+  }, []);
 
   // Start camera stream
   const startCamera = useCallback(async () => {
@@ -617,6 +645,8 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
     triggerHaptic('heavy');
     playMeshDetect();
 
+    const photoUrl = takeOnSpotPhoto();
+
     const canvas = overlayCanvasRef.current;
     const w = canvas?.clientWidth || window.innerWidth;
     const h = canvas?.clientHeight || window.innerHeight;
@@ -633,11 +663,12 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
       worldZ: Number(worldZ.toFixed(2)),
       dimensions: { ...furnitureDim },
       rotationYaw: furnitureRotation,
-      confidence: 'high'
+      confidence: 'high',
+      photoSnapshotUrl: photoUrl || undefined
     };
 
     setCapturedFurniture((prev) => [...prev, newObj]);
-    setCoachingCue(`Classified: ${selectedCategory.label} with 3D Bounding Box.`);
+    setCoachingCue(`Classified: ${selectedCategory.label} with on-spot 3D bounding box.`);
   };
 
   // Remove Captured Furniture
@@ -722,7 +753,8 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
         dimensions: { ...item.dimensions },
         rotation: { yaw: item.rotationYaw },
         confidence: item.confidence,
-        materialStyle: 'modern_white'
+        materialStyle: 'modern_white',
+        photoSnapshotUrl: item.photoSnapshotUrl
       };
 
       addObject(roomObj);
@@ -770,6 +802,37 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
         ref={overlayCanvasRef}
         className="absolute inset-0 w-full h-full pointer-events-none"
       />
+
+      {/* Camera Shutter Flash Animation */}
+      {flash && (
+        <div className="absolute inset-0 z-40 bg-white/80 pointer-events-none transition-opacity duration-150" />
+      )}
+
+      {/* Floating On-Spot Camera Shutter Button */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-1.5">
+        <button
+          id="btn-onspot-shutter"
+          onClick={() => {
+            takeOnSpotPhoto();
+            setCoachingCue('On-spot photo snapped!');
+          }}
+          title="Snap On-Spot Photo"
+          className="w-13 h-13 rounded-full border-2 border-white/90 bg-white/20 backdrop-blur-md p-1 active:scale-90 transition-all flex items-center justify-center shadow-2xl hover:bg-white/30"
+        >
+          <div className="w-full h-full rounded-full bg-white shadow-inner flex items-center justify-center text-slate-950">
+            <Camera className="w-5 h-5" />
+          </div>
+        </button>
+        <span className="text-[9px] font-bold uppercase tracking-wider text-white/90 bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-sm">
+          Snap
+        </span>
+
+        {lastSnapshot && (
+          <div className="mt-1 w-11 h-11 rounded-xl overflow-hidden border border-cyan-400/60 shadow-lg relative animate-fade-in">
+            <img src={lastSnapshot} alt="Snapshot" className="w-full h-full object-cover" />
+          </div>
+        )}
+      </div>
 
       {/* Camera Error Screen */}
       {cameraError && (

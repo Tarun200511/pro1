@@ -18,7 +18,8 @@ import {
   Flame,
   Moon,
   Upload,
-  Layers
+  Layers,
+  Camera
 } from 'lucide-react';
 
 interface InspectorPanelProps {
@@ -56,6 +57,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   const removeOpening = useRoomStore((state) => state.removeOpening);
   const setRoomName = useRoomStore((state) => state.setRoomName);
   const clearRoom = useRoomStore((state) => state.clearRoom);
+  const openCameraScanner = useRoomStore((state) => state.openCameraScanner);
 
   const [roomTab, setRoomTab] = useState<'overview' | 'surfaces'>('overview');
   const floorFileInputRef = useRef<HTMLInputElement>(null);
@@ -167,6 +169,38 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               ))}
             </select>
           </div>
+
+          {/* On-Spot Camera Snapshot Preview & Shutter Action */}
+          {selectedObj.photoSnapshotUrl ? (
+            <div className="space-y-1.5 p-3 bg-white/5 border border-white/10 rounded-2xl">
+              <div className="flex items-center justify-between text-xs text-slate-300">
+                <span className="font-semibold">On-Spot Camera Snapshot</span>
+                <span className="text-[10px] text-emerald-400 font-bold uppercase">Captured Live</span>
+              </div>
+              <div className="relative rounded-xl overflow-hidden border border-white/15 shadow-md">
+                <img
+                  src={selectedObj.photoSnapshotUrl}
+                  alt={selectedObj.name}
+                  className="w-full h-28 object-cover"
+                />
+              </div>
+              <button
+                onClick={openCameraScanner}
+                className="w-full mt-1 py-1.5 bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-98"
+              >
+                <Camera className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Retake On-Spot Photo</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={openCameraScanner}
+              className="w-full py-2.5 px-3 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 hover:from-cyan-600/30 hover:to-blue-600/30 border border-cyan-400/40 text-cyan-300 text-xs font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-98 shadow-lg shadow-cyan-500/10"
+            >
+              <Camera className="w-4 h-4 text-cyan-400" />
+              <span>Capture On-Spot Photo</span>
+            </button>
+          )}
 
           {/* Dimensions (W × D × H) */}
           <div className="space-y-3">

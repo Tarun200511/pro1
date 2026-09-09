@@ -1,7 +1,8 @@
 import React from 'react';
 import { useRoomStore } from '../../store/useRoomStore';
-import { Box, Compass, Columns2, Download } from 'lucide-react';
+import { Box, Compass, Columns2, Download, Camera } from 'lucide-react';
 import { ScannerOverlay } from '../scanner/ScannerOverlay';
+import { triggerHaptic } from '../../utils/sound';
 
 interface Props {
   onOpenExportModal: () => void;
@@ -13,6 +14,7 @@ export const Header: React.FC<Props> = ({ onOpenExportModal }) => {
   const unit = useRoomStore((state) => state.unit);
   const setUnit = useRoomStore((state) => state.setUnit);
   const roomName = useRoomStore((state) => state.roomName);
+  const openCameraScanner = useRoomStore((state) => state.openCameraScanner);
 
   return (
     <header className="pt-[calc(var(--sat)+0.5rem)] pb-2 px-4 md:px-6 md:h-16 md:py-0 flex items-center justify-between bg-slate-900/85 backdrop-blur-2xl border-b border-white/10 select-none z-30 relative text-white">
@@ -100,7 +102,21 @@ export const Header: React.FC<Props> = ({ onOpenExportModal }) => {
           </button>
         </div>
 
-        {/* Camera / AR Room Scanner Trigger */}
+        {/* DIRECT ON-SPOT CAMERA CAPTURE BUTTON */}
+        <button
+          id="btn-onspot-camera-header"
+          onClick={() => {
+            triggerHaptic('heavy');
+            openCameraScanner();
+          }}
+          className="flex items-center gap-1.5 px-2.5 md:px-3.5 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-[11px] md:text-xs font-bold rounded-xl shadow-lg shadow-cyan-500/30 transition-all active:scale-95"
+        >
+          <Camera className="w-3.5 h-3.5 md:w-4 md:h-4 animate-pulse text-white" />
+          <span className="hidden sm:inline">On-Spot Camera</span>
+          <span className="sm:hidden">Camera</span>
+        </button>
+
+        {/* Presets & Simulator Trigger */}
         <ScannerOverlay />
 
         {/* Export Modal Trigger */}
