@@ -9,11 +9,23 @@ import type {
   FloorStyle,
   WallStyle,
   LightingPreset,
-  ImportedMesh
+  ImportedMesh,
+  RenderStyle,
+  SavedRoom
 } from '../types/room';
 import { ROOM_PRESETS } from '../utils/presets';
-import { snapToGrid } from '../utils/math';
+import { snapToGrid, calculateRoomArea } from '../utils/math';
 import { toggleMute, playUiClick } from '../utils/sound';
+
+const loadInitialSavedRooms = (): SavedRoom[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('roomplan_saved_rooms');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
 
 interface HistorySnapshot {
   walls: Wall[];
@@ -31,12 +43,14 @@ interface RoomState {
   gridSnap: boolean;
 
   // Surface Replication & Environment
+  renderStyle: RenderStyle;
   floorStyle: FloorStyle;
   wallStyle: WallStyle;
   customFloorTexture: string | null;
   customWallTexture: string | null;
   lightingPreset: LightingPreset;
   importedMeshes: ImportedMesh[];
+  savedRooms: SavedRoom[];
 
   // View & Tool States
   viewMode: ViewMode;
@@ -67,6 +81,7 @@ interface RoomState {
   toggleGridSnap: () => void;
   toggleAudioMute: () => void;
   setRoomName: (name: string) => void;
+  setCeilingHeight: (height: number) => void;
 
   selectElement: (id: string | null, type?: 'wall' | 'object' | 'opening' | null, openingId?: string | null) => void;
   clearSelection: () => void;
@@ -96,11 +111,17 @@ interface RoomState {
   clearRoom: () => void;
 
   // Surface Replication & Environment
+  setRenderStyle: (style: RenderStyle) => void;
   setFloorStyle: (style: FloorStyle, customUrl?: string) => void;
   setWallStyle: (style: WallStyle, customUrl?: string) => void;
   setLightingPreset: (preset: LightingPreset) => void;
   addImportedMesh: (mesh: ImportedMesh) => void;
   removeImportedMesh: (id: string) => void;
+
+  // Offline Room Vault
+  saveCurrentRoom: () => void;
+  loadSavedRoom: (id: string) => void;
+  deleteSavedRoom: (id: string) => void;
 
   // History
   undo: () => void;
@@ -119,12 +140,19 @@ export const useRoomStore = create<RoomState>((set, get) => ({
   wallThickness: 0.15,
   gridSnap: true,
 
+  renderStyle: 'dollhouse',
   floorStyle: 'hardwood_oak',
   wallStyle: 'white_plaster',
   customFloorTexture: null,
   customWallTexture: null,
   lightingPreset: 'daylight',
   importedMeshes: [],
+  savedRooms: loadInitialSavedRooms(),
+
+  setRenderStyle: (style) => {
+    playUiClick();
+    set({ renderStyle: style });
+  },
 
   setFloorStyle: (style, customUrl) => {
     playUiClick();
@@ -149,10 +177,61 @@ export const useRoomStore = create<RoomState>((set, get) => ({
   },
 
   removeImportedMesh: (id) => {
-    get().saveHistorySnapshot();
+    playUiClick();
     set((state) => ({
       importedMeshes: state.importedMeshes.filter((m) => m.id !== id)
     }));
+  },
+
+  // Offline Room Vault Implementation
+  saveCurrentRoom: () => {
+    const { walls, objects, roomName, ceilingHeight } = get();
+    const area = calculateRoomArea(walls);
+    const newSaved: SavedRoom = {
+      id: `room-${Date.now()}`,
+      name: roomName || 'Scanned Room',
+      savedAt: new Date().toISOString(),
+      walls: JSON.parse(JSON.stringify(walls)),
+      objects: JSON.parse(JSON.stringify(objects)),
+      metadata: {
+        area,
+        wallCount: walls.length,
+        objectCount: objects.length,
+        ceilingHeight
+      }
+    };
+    const current = get().savedRooms;
+    const updated = [newSaved, ...current];
+    try {
+      localStorage.setItem('roomplan_saved_rooms', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save room to local storage', e);
+    }
+    set({ savedRooms: updated });
+    playUiClick();
+  },
+
+  loadSavedRoom: (id: string) => {
+    const room = get().savedRooms.find((r) => r.id === id);
+    if (!room) return;
+    set({
+      walls: room.walls,
+      objects: room.objects,
+      roomName: room.name,
+      ceilingHeight: room.metadata.ceilingHeight || 2.6,
+      selectedId: null,
+      selectedType: null
+    });
+    playUiClick();
+  },
+
+  deleteSavedRoom: (id: string) => {
+    const updated = get().savedRooms.filter((r) => r.id !== id);
+    try {
+      localStorage.setItem('roomplan_saved_rooms', JSON.stringify(updated));
+    } catch {}
+    set({ savedRooms: updated });
+    playUiClick();
   },
 
   viewMode: '3d',
@@ -199,6 +278,12 @@ export const useRoomStore = create<RoomState>((set, get) => ({
   },
 
   setRoomName: (name) => set({ roomName: name }),
+  setCeilingHeight: (height) => {
+    set((state) => ({
+      ceilingHeight: height,
+      walls: state.walls.map((w) => ({ ...w, height }))
+    }));
+  },
 
   selectElement: (id, type = null, openingId = null) => {
     if (id !== get().selectedId) {

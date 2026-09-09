@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Wall, UnitType, WallStyle } from '../../types/room';
+import type { Wall, UnitType, WallStyle, RenderStyle } from '../../types/room';
 import { distance2D, angle2D, formatDimension } from '../../utils/math';
 import { createBrickTexture } from '../../utils/textures';
 
@@ -63,7 +63,8 @@ export function buildWallMesh(
   isSelected = false,
   unit: UnitType = 'm',
   wallStyle: WallStyle = 'white_plaster',
-  customWallUrl?: string
+  customWallUrl?: string,
+  renderStyle: RenderStyle = 'dollhouse'
 ): THREE.Group {
   const group = new THREE.Group();
   group.name = `wall-${wall.id}`;
@@ -74,6 +75,25 @@ export function buildWallMesh(
 
   const H = wall.height || 2.6;
   const T = wall.thickness || 0.15;
+  const isDollhouse = renderStyle === 'dollhouse';
+
+  // Apple RoomPlan Signature Frosted Glass Acrylic Material
+  const dollhouseMat = new THREE.MeshPhysicalMaterial({
+    color: isSelected ? 0x93c5fd : 0xdbeafe,
+    transmission: 0.65,
+    transparent: true,
+    opacity: 0.86,
+    roughness: 0.2,
+    metalness: 0.06,
+    ior: 1.45,
+    thickness: T
+  });
+
+  const dollhouseEdgeMat = new THREE.LineBasicMaterial({
+    color: isSelected ? 0x38bdf8 : 0x0ea5e9,
+    transparent: true,
+    opacity: isSelected ? 0.95 : 0.6
+  });
 
   let wallTexture: THREE.Texture | null = null;
   let wallColor = isSelected ? 0xe2e8f0 : 0xf8fafc;
@@ -104,11 +124,9 @@ export function buildWallMesh(
     linewidth: 2
   });
 
-  const frameMat = new THREE.MeshStandardMaterial({
-    color: 0x334155,
-    roughness: 0.4,
-    metalness: 0.2
-  });
+  const frameMat = isDollhouse
+    ? new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.3, metalness: 0.2 })
+    : new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.2 });
 
   const glassMat = new THREE.MeshPhysicalMaterial({
     color: 0x93c5fd,
@@ -123,7 +141,7 @@ export function buildWallMesh(
   const wallContent = new THREE.Group();
 
   // Helper to add local box
-  const addBlock = (w: number, h: number, d: number, cx: number, cy: number, cz: number, mat = wallMat) => {
+  const addBlock = (w: number, h: number, d: number, cx: number, cy: number, cz: number, mat = isDollhouse ? dollhouseMat : wallMat) => {
     if (w <= 0.005 || h <= 0.005) return;
     const geom = new THREE.BoxGeometry(w, h, d);
     const mesh = new THREE.Mesh(geom, mat);
@@ -132,6 +150,13 @@ export function buildWallMesh(
     mesh.receiveShadow = true;
     mesh.userData = { parentId: wall.id, type: 'wall' };
     wallContent.add(mesh);
+
+    if (isDollhouse) {
+      const edges = new THREE.EdgesGeometry(geom);
+      const wire = new THREE.LineSegments(edges, dollhouseEdgeMat);
+      wire.position.set(cx, cy, cz);
+      wallContent.add(wire);
+    }
   };
 
   // Sort openings by offset along wall

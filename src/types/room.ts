@@ -32,11 +32,30 @@ export type FurnitureCategory =
   | 'storage'
   | 'appliances'
   | 'electronics'
-  | 'beds';
+  | 'beds'
+  | 'bathroom'
+  | 'architectural';
 
+// Official Apple RoomPlan Object Categories + CAD aliases
 export type FurnitureType =
+  // Apple RoomPlan official 16 categories:
   | 'chair'
   | 'sofa'
+  | 'table'
+  | 'bed'
+  | 'storage'
+  | 'refrigerator'
+  | 'stove'
+  | 'oven'
+  | 'dishwasher'
+  | 'sink'
+  | 'washerDryer'
+  | 'toilet'
+  | 'bathtub'
+  | 'television'
+  | 'fireplace'
+  | 'stairs'
+  // Convenience CAD subtypes:
   | 'armchair'
   | 'dining_table'
   | 'coffee_table'
@@ -44,9 +63,10 @@ export type FurnitureType =
   | 'wardrobe'
   | 'sideboard'
   | 'bookshelf'
-  | 'refrigerator'
-  | 'tv'
-  | 'bed';
+  | 'tv';
+
+export type RenderStyle = 'dollhouse' | 'textured';
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
 
 export type FloorStyle = 'hardwood_oak' | 'grey_tile' | 'marble' | 'carpet' | 'concrete' | 'custom_photo';
 export type WallStyle = 'white_plaster' | 'warm_beige' | 'slate_grey' | 'brick' | 'custom_photo';
@@ -71,8 +91,23 @@ export interface RoomObject {
   dimensions: { width: number; depth: number; height: number }; // meters (W=X, D=Z, H=Y)
   rotation: { yaw: number }; // in radians (rotation around Y-axis)
   color?: string;
+  confidence?: ConfidenceLevel;
   materialStyle?: 'modern_white' | 'natural_oak' | 'slate_dark' | 'brushed_aluminum';
   photoSnapshotUrl?: string; // real camera photo snapshot of this item
+}
+
+export interface SavedRoom {
+  id: string;
+  name: string;
+  savedAt: string;
+  walls: Wall[];
+  objects: RoomObject[];
+  metadata: {
+    area: number;
+    wallCount: number;
+    objectCount: number;
+    ceilingHeight: number;
+  };
 }
 
 export interface RoomMetadata {

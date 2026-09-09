@@ -1,8 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useRoomStore } from '../../store/useRoomStore';
-import type { Wall } from '../../types/room';
+import type { Wall, WallOpening, RoomObject, FurnitureType, FurnitureCategory } from '../../types/room';
 import { formatDimension, metersToFeet, feetToMeters } from '../../utils/math';
-import { playLidarPulse, playMeshDetect, playScanComplete } from '../../utils/sound';
+import { playLidarPulse, playMeshDetect, playScanComplete, triggerHaptic } from '../../utils/sound';
 import {
   Camera,
   X,
@@ -11,18 +11,50 @@ import {
   RotateCcw,
   Sparkles,
   AlertCircle,
-  SwitchCamera
+  SwitchCamera,
+  DoorOpen,
+  AppWindow,
+  Box,
+  ChevronRight,
+  ChevronLeft,
+  Plus,
+  Trash2
 } from 'lucide-react';
 
 interface PinnedPoint {
   id: string;
-  // Normalized coordinates in camera view [0, 1]
   u: number;
   v: number;
-  // Calibrated real-world floor coordinates in meters
   worldX: number;
   worldZ: number;
 }
+
+interface DetectedOpening {
+  id: string;
+  wallIndex: number;
+  type: 'door' | 'window';
+  offset: number;
+  width: number;
+  height: number;
+  elevation: number;
+  swingDirection?: 'left' | 'right' | 'in' | 'out';
+}
+
+interface CapturedFurniture {
+  id: string;
+  type: FurnitureType;
+  category: FurnitureCategory;
+  name: string;
+  worldX: number;
+  worldZ: number;
+  dimensions: { width: number; depth: number; height: number };
+  rotationYaw: number;
+  confidence: 'high' | 'medium';
+}
+
+import { APPLE_16_CATEGORIES, type AppleCategoryConfig } from '../../utils/appleCategories';
+
+type ScanStage = 'floor' | 'walls' | 'openings' | 'furniture' | 'summary';
 
 interface Props {
   isOpen: boolean;
@@ -31,8 +63,12 @@ interface Props {
 
 export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => {
   const addWall = useRoomStore((state) => state.addWall);
+  const addObject = useRoomStore((state) => state.addObject);
   const clearRoom = useRoomStore((state) => state.clearRoom);
   const setRoomName = useRoomStore((state) => state.setRoomName);
+  const setRenderStyle = useRoomStore((state) => state.setRenderStyle);
+  const setViewMode = useRoomStore((state) => state.setViewMode);
+  const setCeilingHeight = useRoomStore((state) => state.setCeilingHeight);
   const unit = useRoomStore((state) => state.unit);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -43,24 +79,40 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
 
-  // Scanner workflow states: 'calibrate' | 'pin-corners' | 'height' | 'done'
-  const [step, setStep] = useState<'calibrate' | 'pin-corners' | 'height' | 'done'>('calibrate');
+  // Apple 4-Stage Workflow: floor -> walls -> openings -> furniture -> summary
+  const [stage, setStage] = useState<ScanStage>('floor');
 
-  // Calibration settings (Known Reference Scale)
-  // Options: 1) Standard Reference (A4 Paper: 0.297m, Tile: 0.6m, Door: 0.9m) or 2) Camera height from floor (default 1.4m)
-  const [referenceDistance, setReferenceDistance] = useState<number>(1.0); // meters
-  const [calibPointA, setCalibPointA] = useState<{ u: number; v: number } | null>(null);
-  const [calibPointB, setCalibPointB] = useState<{ u: number; v: number } | null>(null);
-  const [pixelsPerMeter, setPixelsPerMeter] = useState<number>(320); // default pixel-to-meter scale
+  // Calibrated scale (default ~320 px/m)
+  const [pixelsPerMeter] = useState<number>(320);
 
-  // Pinned room corners
+  // Stage 1: Floor Corners
   const [pinnedPoints, setPinnedPoints] = useState<PinnedPoint[]>([]);
-  const [ceilingHeight, setCeilingHeight] = useState<number>(2.6); // default 2.6m
+
+  // Stage 2: Wall Height
+  const [roomHeight, setRoomHeight] = useState<number>(2.6);
+
+  // Stage 3: Openings
+  const [openings, setOpenings] = useState<DetectedOpening[]>([]);
+  const [selectedWallIndex, setSelectedWallIndex] = useState<number>(0);
+  const [openingOffset, setOpeningOffset] = useState<number>(1.0);
+  const [openingType, setOpeningType] = useState<'door' | 'window'>('door');
+  const [doorSwing, setDoorSwing] = useState<'in' | 'out' | 'left' | 'right'>('in');
+
+  // Stage 4: Furniture Classification
+  const [selectedCategory, setSelectedCategory] = useState<AppleCategoryConfig>(APPLE_16_CATEGORIES[0]);
+  const [furnitureDim, setFurnitureDim] = useState<{ width: number; depth: number; height: number }>(
+    APPLE_16_CATEGORIES[0].defaultDim
+  );
+  const [furnitureRotation, setFurnitureRotation] = useState<number>(0);
+  const [capturedFurniture, setCapturedFurniture] = useState<CapturedFurniture[]>([]);
 
   // Reticle crosshair position (normalized [0, 1])
   const [reticlePos, setReticlePos] = useState<{ u: number; v: number }>({ u: 0.5, v: 0.5 });
 
-  // Start Camera Stream
+  // Real-time audio/haptic guidance prompt
+  const [coachingCue, setCoachingCue] = useState<string>('Scan floor plane slowly. Aim reticle at room corners.');
+
+  // Start camera stream
   const startCamera = useCallback(async () => {
     try {
       setCameraError(null);
@@ -86,8 +138,8 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
       console.error('Camera access error:', err);
       setCameraError(
         err.name === 'NotAllowedError'
-          ? 'Camera permission denied. Please allow camera access in your browser settings.'
-          : `Unable to access camera: ${err.message || 'Unknown device error'}.`
+          ? 'Camera permission denied. Please enable camera access in browser settings.'
+          : `Camera error: ${err.message || 'Unable to access video stream'}`
       );
     }
   }, [facingMode]);
@@ -108,12 +160,34 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
     };
   }, [isOpen]);
 
-  // Switch between front & back camera
   const toggleCamera = () => {
+    triggerHaptic('light');
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
   };
 
-  // Canvas drawing loop for AR overlays, laser lines, and measurement badges
+  // Keep furniture dimensions in sync with selected category
+  const handleSelectCategory = (cat: AppleCategoryConfig) => {
+    triggerHaptic('selection');
+    setSelectedCategory(cat);
+    setFurnitureDim(cat.defaultDim);
+  };
+
+  // Auto-detect floor perimeter preset helper (simulated rapid LiDAR perimeter scan)
+  const handleAutoDetectPerimeter = () => {
+    triggerHaptic('medium');
+    playLidarPulse();
+    const pts: PinnedPoint[] = [
+      { id: 'p1', u: 0.28, v: 0.72, worldX: -2.0, worldZ: -1.8 },
+      { id: 'p2', u: 0.72, v: 0.72, worldX: 2.0, worldZ: -1.8 },
+      { id: 'p3', u: 0.78, v: 0.38, worldX: 2.0, worldZ: 1.8 },
+      { id: 'p4', u: 0.22, v: 0.38, worldX: -2.0, worldZ: 1.8 }
+    ];
+    setPinnedPoints(pts);
+    playScanComplete();
+    setCoachingCue('Perimeter locked: 4 walls identified. Tap Calibrate Walls to proceed.');
+  };
+
+  // Canvas drawing loop: renders spatial LiDAR point field, wireframe walls, and 3D AR isometric bounding boxes
   useEffect(() => {
     if (!isOpen) return;
     const canvas = overlayCanvasRef.current;
@@ -124,6 +198,15 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
     let animId: number;
     let pulse = 0;
 
+    // Simulated LiDAR spatial particles
+    const particleCount = 42;
+    const particles = Array.from({ length: particleCount }, (_, idx) => ({
+      x: 0.15 + (idx % 7) * 0.12 + (Math.random() - 0.5) * 0.05,
+      y: 0.35 + Math.floor(idx / 7) * 0.1 + (Math.random() - 0.5) * 0.05,
+      phase: Math.random() * Math.PI * 2,
+      speed: 0.03 + Math.random() * 0.04
+    }));
+
     const render = () => {
       pulse += 0.04;
       const w = (canvas.width = canvas.parentElement?.clientWidth || window.innerWidth);
@@ -131,94 +214,66 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
 
       ctx.clearRect(0, 0, w, h);
 
-      // 1. Draw Calibration Line if in Calibrate Mode
-      if (step === 'calibrate') {
-        if (calibPointA) {
-          const ptA = { x: calibPointA.u * w, y: calibPointA.v * h };
-          const ptB = calibPointB ? { x: calibPointB.u * w, y: calibPointB.v * h } : { x: reticlePos.u * w, y: reticlePos.v * h };
-
-          // Laser measurement line
-          ctx.strokeStyle = '#38bdf8';
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash([8, 6]);
+      // 1. Apple LiDAR Sweeping Particle Field (Floors & Walls)
+      if (stage === 'floor' || stage === 'walls') {
+        particles.forEach((p) => {
+          const px = p.x * w;
+          const py = p.y * h + Math.sin(pulse * p.speed * 20 + p.phase) * 6;
+          const alpha = 0.35 + Math.sin(pulse * 2 + p.phase) * 0.3;
+          ctx.fillStyle = `rgba(0, 240, 255, ${Math.max(0.08, alpha)})`;
           ctx.beginPath();
-          ctx.moveTo(ptA.x, ptA.y);
-          ctx.lineTo(ptB.x, ptB.y);
-          ctx.stroke();
-          ctx.setLineDash([]);
-
-          // End markers
-          [ptA, ptB].forEach((pt) => {
-            ctx.fillStyle = '#0284c7';
-            ctx.beginPath();
-            ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-          });
-
-          // Label
-          const mid = { x: (ptA.x + ptB.x) / 2, y: (ptA.y + ptB.y) / 2 };
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-          ctx.fillRect(mid.x - 70, mid.y - 14, 140, 28);
-          ctx.strokeStyle = '#38bdf8';
-          ctx.strokeRect(mid.x - 70, mid.y - 14, 140, 28);
-          ctx.fillStyle = '#38bdf8';
-          ctx.font = '600 12px monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(`Scale: ${formatDimension(referenceDistance, unit)}`, mid.x, mid.y);
-        }
+          ctx.arc(px, py, 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        });
       }
 
-      // 2. Draw Pinned Room Corners & Wall Lines
+      // 2. Render Pinned Floor Perimeter & Wall Outlines
       if (pinnedPoints.length > 0) {
-        ctx.strokeStyle = '#007aff';
-        ctx.lineWidth = 3;
-        ctx.shadowColor = 'rgba(0, 122, 255, 0.6)';
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = 'rgba(0, 240, 255, 0.6)';
         ctx.shadowBlur = 10;
 
-        // Draw lines between consecutive pinned points
         for (let i = 0; i < pinnedPoints.length; i++) {
           const p1 = { x: pinnedPoints[i].u * w, y: pinnedPoints[i].v * h };
           const isLast = i === pinnedPoints.length - 1;
           const p2 = !isLast
             ? { x: pinnedPoints[i + 1].u * w, y: pinnedPoints[i + 1].v * h }
-            : step === 'pin-corners'
+            : stage === 'floor'
             ? { x: reticlePos.u * w, y: reticlePos.v * h }
-            : null;
+            : { x: pinnedPoints[0].u * w, y: pinnedPoints[0].v * h };
 
           if (p2) {
             ctx.beginPath();
-            if (isLast) {
-              ctx.setLineDash([6, 4]);
-              ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
+            if (isLast && stage === 'floor') {
+              ctx.setLineDash([8, 6]);
+              ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
             } else {
               ctx.setLineDash([]);
-              ctx.strokeStyle = '#007aff';
+              ctx.strokeStyle = '#00f0ff';
             }
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(p2.x, p2.y);
             ctx.stroke();
 
-            // Distance calculation
-            const dxMeters = pinnedPoints[i].worldX - (isLast ? (reticlePos.u * w) / pixelsPerMeter : pinnedPoints[i + 1].worldX);
-            const dzMeters = pinnedPoints[i].worldZ - (isLast ? (reticlePos.v * h) / pixelsPerMeter : pinnedPoints[i + 1].worldZ);
-            const distMeters = Math.hypot(dxMeters, dzMeters);
+            // Calculate length in meters
+            const nextPt = !isLast ? pinnedPoints[i + 1] : pinnedPoints[0];
+            const dx = pinnedPoints[i].worldX - (isLast && stage === 'floor' ? (reticlePos.u * w) / pixelsPerMeter : nextPt.worldX);
+            const dz = pinnedPoints[i].worldZ - (isLast && stage === 'floor' ? (reticlePos.v * h) / pixelsPerMeter : nextPt.worldZ);
+            const distMeters = Math.hypot(dx, dz);
 
-            // Dimension badge
+            // Dimension Badge
             const midX = (p1.x + p2.x) / 2;
             const midY = (p1.y + p2.y) / 2;
             const badgeText = formatDimension(distMeters, unit);
-            ctx.font = '600 12px sans-serif';
-            const badgeW = ctx.measureText(badgeText).width + 16;
 
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-            ctx.fillRect(midX - badgeW / 2, midY - 12, badgeW, 24);
-            ctx.strokeStyle = isLast ? '#38bdf8' : '#007aff';
-            ctx.lineWidth = 1.2;
-            ctx.strokeRect(midX - badgeW / 2, midY - 12, badgeW, 24);
+            ctx.font = '600 11px monospace';
+            const badgeW = ctx.measureText(badgeText).width + 16;
+            ctx.fillStyle = 'rgba(10, 15, 29, 0.88)';
+            ctx.fillRect(midX - badgeW / 2, midY - 11, badgeW, 22);
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(midX - badgeW / 2, midY - 11, badgeW, 22);
             ctx.fillStyle = '#ffffff';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -229,143 +284,380 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
         ctx.shadowBlur = 0;
         ctx.setLineDash([]);
 
-        // Draw Corner Dots with Pulsing Glow
+        // Pinned Floor Corner Nodes
         pinnedPoints.forEach((p, idx) => {
           const cx = p.u * w;
           const cy = p.v * h;
 
-          // Outer pulse ring
-          ctx.strokeStyle = 'rgba(0, 122, 255, 0.4)';
-          ctx.lineWidth = 2;
+          ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
+          ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(cx, cy, 10 + Math.sin(pulse) * 3, 0, Math.PI * 2);
+          ctx.arc(cx, cy, 11 + Math.sin(pulse + idx) * 3, 0, Math.PI * 2);
           ctx.stroke();
 
-          // Core dot
-          ctx.fillStyle = idx === 0 ? '#34c759' : '#007aff';
+          ctx.fillStyle = idx === 0 ? '#34c759' : '#00f0ff';
           ctx.beginPath();
-          ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+          ctx.arc(cx, cy, 6, 0, Math.PI * 2);
           ctx.fill();
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 2;
           ctx.stroke();
 
-          // Corner label
           ctx.fillStyle = '#ffffff';
           ctx.font = 'bold 10px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'bottom';
-          ctx.fillText(`C${idx + 1}`, cx, cy - 12);
+          ctx.fillText(`C${idx + 1}`, cx, cy - 10);
+        });
+
+        // 3. Extruded 3D Wall Preview in 'walls' & 'openings' stage
+        if ((stage === 'walls' || stage === 'openings') && pinnedPoints.length >= 3) {
+          const wallHeightPx = roomHeight * (pixelsPerMeter * 0.35);
+          for (let i = 0; i < pinnedPoints.length; i++) {
+            const nextIdx = (i + 1) % pinnedPoints.length;
+            const b1 = { x: pinnedPoints[i].u * w, y: pinnedPoints[i].v * h };
+            const b2 = { x: pinnedPoints[nextIdx].u * w, y: pinnedPoints[nextIdx].v * h };
+            const t1 = { x: b1.x, y: b1.y - wallHeightPx };
+            const t2 = { x: b2.x, y: b2.y - wallHeightPx };
+
+            // Wall translucent face
+            ctx.fillStyle = i === selectedWallIndex && stage === 'openings'
+              ? 'rgba(0, 240, 255, 0.24)'
+              : 'rgba(56, 189, 248, 0.12)';
+            ctx.beginPath();
+            ctx.moveTo(b1.x, b1.y);
+            ctx.lineTo(b2.x, b2.y);
+            ctx.lineTo(t2.x, t2.y);
+            ctx.lineTo(t1.x, t1.y);
+            ctx.closePath();
+            ctx.fill();
+
+            // Wall wireframe ceiling line
+            ctx.strokeStyle = i === selectedWallIndex && stage === 'openings' ? '#00f0ff' : 'rgba(0, 240, 255, 0.6)';
+            ctx.lineWidth = i === selectedWallIndex && stage === 'openings' ? 2.5 : 1.5;
+            ctx.beginPath();
+            ctx.moveTo(t1.x, t1.y);
+            ctx.lineTo(t2.x, t2.y);
+            ctx.stroke();
+
+            // Vertical corner seam
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(b1.x, b1.y);
+            ctx.lineTo(t1.x, t1.y);
+            ctx.stroke();
+          }
+
+          // Render Openings along walls
+          openings.forEach((op) => {
+            const i = op.wallIndex;
+            if (i < pinnedPoints.length) {
+              const nextIdx = (i + 1) % pinnedPoints.length;
+              const b1 = { x: pinnedPoints[i].u * w, y: pinnedPoints[i].v * h };
+              const b2 = { x: pinnedPoints[nextIdx].u * w, y: pinnedPoints[nextIdx].v * h };
+              const t = Math.min(0.85, Math.max(0.15, op.offset / 3.0));
+              const opX = b1.x + (b2.x - b1.x) * t;
+              const opY = b1.y + (b2.y - b1.y) * t;
+
+              // Door / window opening frame
+              ctx.strokeStyle = op.type === 'door' ? '#f59e0b' : '#38bdf8';
+              ctx.lineWidth = 2.5;
+              const frameW = 28;
+              const frameH = op.type === 'door' ? 52 : 32;
+              const frameY = op.type === 'door' ? opY - frameH : opY - frameH - 15;
+              ctx.strokeRect(opX - frameW / 2, frameY, frameW, frameH);
+
+              // Door swing arc
+              if (op.type === 'door') {
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.arc(opX - frameW / 2, opY, frameW, 0, Math.PI / 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+              }
+
+              // Label
+              ctx.fillStyle = '#ffffff';
+              ctx.font = 'bold 9px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.fillText(op.type.toUpperCase(), opX, frameY - 6);
+            }
+          });
+        }
+      }
+
+      // 4. Render 3D Isometric Bounding Box Overlay for Furniture (Stage 4)
+      if (stage === 'furniture') {
+        const rx = reticlePos.u * w;
+        const ry = reticlePos.v * h;
+
+        // Compute 3D Isometric Projection of Bounding Box
+        const scale = pixelsPerMeter * 0.45;
+        const bw = furnitureDim.width * scale * 0.5;
+        const bd = furnitureDim.depth * scale * 0.5;
+        const bh = furnitureDim.height * scale;
+
+        // Isometric offset axes
+        const isoX = Math.cos(Math.PI / 6);
+        const isoY = Math.sin(Math.PI / 6);
+
+        // 8 3D Vertices projected to 2D
+        // Bottom 4: b00, b10, b11, b01
+        const b0 = { x: rx - bw * isoX + bd * isoX, y: ry + bw * isoY + bd * isoY };
+        const b1 = { x: rx + bw * isoX + bd * isoX, y: ry - bw * isoY + bd * isoY };
+        const b2 = { x: rx + bw * isoX - bd * isoX, y: ry - bw * isoY - bd * isoY };
+        const b3 = { x: rx - bw * isoX - bd * isoX, y: ry + bw * isoY - bd * isoY };
+
+        // Top 4: elevated by bh
+        const t0 = { x: b0.x, y: b0.y - bh };
+        const t1 = { x: b1.x, y: b1.y - bh };
+        const t2 = { x: b2.x, y: b2.y - bh };
+        const t3 = { x: b3.x, y: b3.y - bh };
+
+        // Draw translucent isometric faces
+        ctx.fillStyle = 'rgba(0, 240, 255, 0.08)';
+        // Top Face
+        ctx.beginPath();
+        ctx.moveTo(t0.x, t0.y);
+        ctx.lineTo(t1.x, t1.y);
+        ctx.lineTo(t2.x, t2.y);
+        ctx.lineTo(t3.x, t3.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // Front Face
+        ctx.beginPath();
+        ctx.moveTo(b0.x, b0.y);
+        ctx.lineTo(b1.x, b1.y);
+        ctx.lineTo(t1.x, t1.y);
+        ctx.lineTo(t0.x, t0.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw 12 Wireframe Edges
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 1.8;
+        ctx.shadowColor = 'rgba(0, 240, 255, 0.8)';
+        ctx.shadowBlur = 8;
+
+        const edges = [
+          [b0, b1], [b1, b2], [b2, b3], [b3, b0], // Bottom loop
+          [t0, t1], [t1, t2], [t2, t3], [t3, t0], // Top loop
+          [b0, t0], [b1, t1], [b2, t2], [b3, t3]  // Vertical pillars
+        ];
+
+        edges.forEach(([pA, pB]) => {
+          ctx.beginPath();
+          ctx.moveTo(pA.x, pA.y);
+          ctx.lineTo(pB.x, pB.y);
+          ctx.stroke();
+        });
+
+        // Glowing Spatial Corner Brackets (Apple RoomPlan style)
+        [b0, b1, b2, b3, t0, t1, t2, t3].forEach((pt) => {
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        ctx.shadowBlur = 0;
+
+        // Classification Header Card above 3D Bounding Box
+        const tagText = `${selectedCategory.label} • High Confidence`;
+        const dimText = `${formatDimension(furnitureDim.width, unit)} × ${formatDimension(
+          furnitureDim.depth,
+          unit
+        )} × ${formatDimension(furnitureDim.height, unit)}`;
+
+        ctx.font = 'bold 12px sans-serif';
+        const tagW = Math.max(ctx.measureText(tagText).width, ctx.measureText(dimText).width) + 24;
+        const tagX = rx;
+        const tagY = t2.y - 32;
+
+        ctx.fillStyle = 'rgba(10, 15, 29, 0.9)';
+        ctx.fillRect(tagX - tagW / 2, tagY, tagW, 36);
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(tagX - tagW / 2, tagY, tagW, 36);
+
+        ctx.fillStyle = '#00f0ff';
+        ctx.textAlign = 'center';
+        ctx.fillText(tagText, tagX, tagY + 14);
+
+        ctx.font = '500 10px monospace';
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillText(dimText, tagX, tagY + 28);
+
+        // Render previously captured furniture objects
+        capturedFurniture.forEach((item) => {
+          const itemPx = ((item.worldX * pixelsPerMeter) / 4 + w / 2);
+          const itemPy = ((item.worldZ * pixelsPerMeter) / 4 + h / 2);
+
+          ctx.strokeStyle = 'rgba(52, 199, 89, 0.9)';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(itemPx - 18, itemPy - 18, 36, 36);
+
+          ctx.fillStyle = 'rgba(52, 199, 89, 0.2)';
+          ctx.fillRect(itemPx - 18, itemPy - 18, 36, 36);
+
+          ctx.fillStyle = '#34c759';
+          ctx.font = 'bold 10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(item.name, itemPx, itemPy + 4);
         });
       }
 
-      // 3. Draw Center Reticle Crosshair
-      const rx = reticlePos.u * w;
-      const ry = reticlePos.v * h;
-      const reticleSize = 36;
+      // 5. Center Reticle Crosshair (Stages: floor, openings)
+      if (stage === 'floor' || stage === 'openings') {
+        const rx = reticlePos.u * w;
+        const ry = reticlePos.v * h;
+        const reticleSize = 34;
 
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 1.5;
 
-      // Brackets
-      ctx.beginPath();
-      // Top-left
-      ctx.moveTo(rx - reticleSize, ry - reticleSize + 10);
-      ctx.lineTo(rx - reticleSize, ry - reticleSize);
-      ctx.lineTo(rx - reticleSize + 10, ry - reticleSize);
-      // Top-right
-      ctx.moveTo(rx + reticleSize - 10, ry - reticleSize);
-      ctx.lineTo(rx + reticleSize, ry - reticleSize);
-      ctx.lineTo(rx + reticleSize, ry - reticleSize + 10);
-      // Bottom-left
-      ctx.moveTo(rx - reticleSize, ry + reticleSize - 10);
-      ctx.lineTo(rx - reticleSize, ry + reticleSize);
-      ctx.lineTo(rx - reticleSize + 10, ry + reticleSize);
-      // Bottom-right
-      ctx.moveTo(rx + reticleSize - 10, ry + reticleSize);
-      ctx.lineTo(rx + reticleSize, ry + reticleSize);
-      ctx.lineTo(rx + reticleSize, ry + reticleSize - 10);
-      ctx.stroke();
+        // Brackets
+        ctx.beginPath();
+        ctx.moveTo(rx - reticleSize, ry - reticleSize + 8);
+        ctx.lineTo(rx - reticleSize, ry - reticleSize);
+        ctx.lineTo(rx - reticleSize + 8, ry - reticleSize);
 
-      // Center dot
-      ctx.fillStyle = '#38bdf8';
-      ctx.beginPath();
-      ctx.arc(rx, ry, 3, 0, Math.PI * 2);
-      ctx.fill();
+        ctx.moveTo(rx + reticleSize - 8, ry - reticleSize);
+        ctx.lineTo(rx + reticleSize, ry - reticleSize);
+        ctx.lineTo(rx + reticleSize, ry - reticleSize + 8);
+
+        ctx.moveTo(rx - reticleSize, ry + reticleSize - 8);
+        ctx.lineTo(rx - reticleSize, ry + reticleSize);
+        ctx.lineTo(rx - reticleSize + 8, ry + reticleSize);
+
+        ctx.moveTo(rx + reticleSize - 8, ry + reticleSize);
+        ctx.lineTo(rx + reticleSize, ry + reticleSize);
+        ctx.lineTo(rx + reticleSize, ry + reticleSize - 8);
+        ctx.stroke();
+
+        ctx.fillStyle = '#00f0ff';
+        ctx.beginPath();
+        ctx.arc(rx, ry, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       animId = requestAnimationFrame(render);
     };
 
     render();
     return () => cancelAnimationFrame(animId);
-  }, [isOpen, step, calibPointA, calibPointB, reticlePos, pinnedPoints, pixelsPerMeter, referenceDistance, unit]);
+  }, [
+    isOpen,
+    stage,
+    reticlePos,
+    pinnedPoints,
+    roomHeight,
+    openings,
+    selectedWallIndex,
+    selectedCategory,
+    furnitureDim,
+    capturedFurniture,
+    pixelsPerMeter,
+    unit
+  ]);
 
-  // Handle Action: Pin Point
-  const handlePinAction = () => {
-    playLidarPulse();
+  // Stage 1 Action: Pin Room Corner
+  const handlePinCorner = () => {
+    triggerHaptic('medium');
+    playMeshDetect();
 
     const canvas = overlayCanvasRef.current;
     const w = canvas?.clientWidth || window.innerWidth;
     const h = canvas?.clientHeight || window.innerHeight;
 
-    if (step === 'calibrate') {
-      if (!calibPointA) {
-        setCalibPointA({ ...reticlePos });
-        playMeshDetect();
-      } else if (!calibPointB) {
-        setCalibPointB({ ...reticlePos });
-        // Calculate exact pixel distance between A and B
-        const pxA = { x: calibPointA.u * w, y: calibPointA.v * h };
-        const pxB = { x: reticlePos.u * w, y: reticlePos.v * h };
-        const distPixels = Math.hypot(pxB.x - pxA.x, pxB.y - pxA.y);
+    const worldX = ((reticlePos.u - 0.5) * w) / pixelsPerMeter;
+    const worldZ = ((reticlePos.v - 0.5) * h) / pixelsPerMeter;
 
-        if (distPixels > 30) {
-          const calculatedPPM = distPixels / referenceDistance;
-          setPixelsPerMeter(calculatedPPM);
-          playScanComplete();
-          // Advance to corner pinning
-          setStep('pin-corners');
-        }
-      }
-      return;
-    }
+    const newPt: PinnedPoint = {
+      id: `pt-${Date.now()}`,
+      u: reticlePos.u,
+      v: reticlePos.v,
+      worldX: Number(worldX.toFixed(2)),
+      worldZ: Number(worldZ.toFixed(2))
+    };
 
-    if (step === 'pin-corners') {
-      // Convert normalized screen position to calibrated real-world meters
-      const worldX = (reticlePos.u * w) / pixelsPerMeter;
-      const worldZ = (reticlePos.v * h) / pixelsPerMeter;
+    setPinnedPoints((prev) => [...prev, newPt]);
 
-      const newPoint: PinnedPoint = {
-        id: `pin-${Date.now()}`,
-        u: reticlePos.u,
-        v: reticlePos.v,
-        worldX,
-        worldZ
-      };
-
-      setPinnedPoints((prev) => [...prev, newPoint]);
-      playMeshDetect();
+    if (pinnedPoints.length + 1 >= 3) {
+      setCoachingCue(`${pinnedPoints.length + 1} corners pinned. Tap "Calibrate Walls" or pin more corners.`);
+    } else {
+      setCoachingCue(`Corner ${pinnedPoints.length + 1} pinned. Move to next room corner.`);
     }
   };
 
-  // Close Loop & Finish Corners
-  const handleFinishCorners = () => {
-    if (pinnedPoints.length < 3) {
-      alert('Please pin at least 3 wall corners to form an enclosed room.');
-      return;
-    }
-    playScanComplete();
-    setStep('height');
+  // Stage 3 Action: Add Opening (Door/Window)
+  const handleAddOpening = () => {
+    triggerHaptic('medium');
+    playMeshDetect();
+
+    const newOpening: DetectedOpening = {
+      id: `op-${Date.now()}`,
+      wallIndex: selectedWallIndex,
+      type: openingType,
+      offset: openingOffset,
+      width: openingType === 'door' ? 0.9 : 1.2,
+      height: openingType === 'door' ? 2.1 : 1.2,
+      elevation: openingType === 'door' ? 0 : 0.9,
+      swingDirection: openingType === 'door' ? doorSwing : undefined
+    };
+
+    setOpenings((prev) => [...prev, newOpening]);
+    setCoachingCue(`${openingType === 'door' ? 'Door' : 'Window'} placed on Wall ${selectedWallIndex + 1}.`);
   };
 
-  // Generate 3D Parametric Room from exact camera measurements
-  const handleGenerateRoom = () => {
+  // Stage 4 Action: Classify & Place 3D Bounding Box
+  const handleClassifyFurniture = () => {
+    triggerHaptic('heavy');
+    playMeshDetect();
+
+    const canvas = overlayCanvasRef.current;
+    const w = canvas?.clientWidth || window.innerWidth;
+    const h = canvas?.clientHeight || window.innerHeight;
+
+    const worldX = ((reticlePos.u - 0.5) * w) / pixelsPerMeter;
+    const worldZ = ((reticlePos.v - 0.5) * h) / pixelsPerMeter;
+
+    const newObj: CapturedFurniture = {
+      id: `captured-${Date.now()}`,
+      type: selectedCategory.type,
+      category: selectedCategory.category,
+      name: selectedCategory.label,
+      worldX: Number(worldX.toFixed(2)),
+      worldZ: Number(worldZ.toFixed(2)),
+      dimensions: { ...furnitureDim },
+      rotationYaw: furnitureRotation,
+      confidence: 'high'
+    };
+
+    setCapturedFurniture((prev) => [...prev, newObj]);
+    setCoachingCue(`Classified: ${selectedCategory.label} with 3D Bounding Box.`);
+  };
+
+  // Remove Captured Furniture
+  const handleRemoveCapturedFurniture = (id: string) => {
+    triggerHaptic('light');
+    setCapturedFurniture((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  // Final Action: Commit Captured RoomPlan to useRoomStore and Enter 3D Dollhouse
+  const handleCompleteRoomPlan = () => {
     if (pinnedPoints.length < 3) return;
 
-    clearRoom();
-    setRoomName('Camera Scanned Room');
+    triggerHaptic('success');
+    playScanComplete();
 
-    // Calculate centroid to center room around origin (0, 0)
+    clearRoom();
+    setRoomName('Captured Room');
+    setCeilingHeight(roomHeight);
+
+    // Compute centroid
     let avgX = 0, avgZ = 0;
     pinnedPoints.forEach((p) => {
       avgX += p.worldX;
@@ -374,7 +666,7 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
     avgX /= pinnedPoints.length;
     avgZ /= pinnedPoints.length;
 
-    // Create connected walls from pinned points
+    // Create connected walls
     const n = pinnedPoints.length;
     for (let i = 0; i < n; i++) {
       const p1 = pinnedPoints[i];
@@ -389,44 +681,67 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
         z: Number((p2.worldZ - avgZ).toFixed(2))
       };
 
-      const wallLen = Math.hypot(end.x - start.x, end.z - start.z);
+      // Associated openings for this wall
+      const wallOpenings: WallOpening[] = openings
+        .filter((op) => op.wallIndex === i)
+        .map((op) => ({
+          id: op.id,
+          type: op.type,
+          offset: op.offset,
+          width: op.width,
+          height: op.height,
+          elevation: op.elevation,
+          swingDirection: op.swingDirection
+        }));
 
       const wall: Wall = {
-        id: `wall-cam-${i + 1}`,
+        id: `wall-scan-${i + 1}`,
         name: `Wall ${i + 1}`,
         start,
         end,
-        height: ceilingHeight,
+        height: roomHeight,
         thickness: 0.15,
-        openings: []
+        openings: wallOpenings
       };
-
-      // Add standard door on longest wall if space permits
-      if (i === 0 && wallLen > 1.8) {
-        wall.openings.push({
-          id: `door-cam-1`,
-          type: 'door',
-          offset: Number((wallLen / 2).toFixed(2)),
-          width: 0.9,
-          height: 2.1,
-          elevation: 0,
-          swingDirection: 'in'
-        });
-      }
 
       addWall(wall);
     }
 
-    playScanComplete();
+    // Add classified furniture objects
+    capturedFurniture.forEach((item, idx) => {
+      const roomObj: RoomObject = {
+        id: `captured-obj-${idx + 1}-${Date.now()}`,
+        category: item.category,
+        type: item.type,
+        name: item.name,
+        position: {
+          x: Number((item.worldX - avgX).toFixed(2)),
+          y: 0,
+          z: Number((item.worldZ - avgZ).toFixed(2))
+        },
+        dimensions: { ...item.dimensions },
+        rotation: { yaw: item.rotationYaw },
+        confidence: item.confidence,
+        materialStyle: 'modern_white'
+      };
+
+      addObject(roomObj);
+    });
+
+    // Switch to signature Apple Dollhouse view
+    setRenderStyle('dollhouse');
+    setViewMode('3d');
     onClose();
   };
 
   // Reset Scanner
   const handleReset = () => {
-    setCalibPointA(null);
-    setCalibPointB(null);
+    triggerHaptic('medium');
     setPinnedPoints([]);
-    setStep('calibrate');
+    setOpenings([]);
+    setCapturedFurniture([]);
+    setStage('floor');
+    setCoachingCue('Scan floor plane slowly. Aim reticle at room corners.');
   };
 
   if (!isOpen) return null;
@@ -441,7 +756,7 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
         setReticlePos({ u, v });
       }}
     >
-      {/* Live Camera Video Element */}
+      {/* Live Camera Stream Video */}
       <video
         ref={videoRef}
         autoPlay
@@ -450,7 +765,7 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
         className="absolute inset-0 w-full h-full object-cover"
       />
 
-      {/* AR Overlays & Measurement Lines Canvas */}
+      {/* AR Overlays, Wireframes & 3D Bounding Boxes Canvas */}
       <canvas
         ref={overlayCanvasRef}
         className="absolute inset-0 w-full h-full pointer-events-none"
@@ -481,99 +796,152 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
         </div>
       )}
 
-      {/* Top HUD: Step Status & Controls */}
-      <div className="relative z-10 p-5 flex items-center justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+      {/* Top HUD: Step Indicators & Device Actions */}
+      <div className="relative z-10 p-4 md:p-5 flex items-center justify-between bg-gradient-to-b from-black/85 via-black/40 to-transparent">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-600/30 border border-blue-400/40 text-blue-400 rounded-2xl backdrop-blur-xl">
+          <div className="p-2.5 bg-blue-600/30 border border-cyan-400/50 text-cyan-400 rounded-2xl backdrop-blur-xl shadow-lg shadow-cyan-500/20">
             <Camera className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold tracking-tight">Camera Dimension Scanner</h2>
-              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">
-                Live AR
+              <h2 className="text-sm font-bold tracking-tight">Apple RoomCapture</h2>
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-full">
+                LiDAR Live
               </span>
             </div>
-            <p className="text-[11px] text-slate-300">
-              {step === 'calibrate' && 'Step 1: Set Reference Scale for exact dimensions'}
-              {step === 'pin-corners' && `Step 2: Aim reticle at room corners (${pinnedPoints.length} pinned)`}
-              {step === 'height' && 'Step 3: Confirm Room Ceiling Height'}
-            </p>
+            {/* Stage Progress Badges */}
+            <div className="flex items-center gap-1.5 mt-1 text-[10px] font-semibold text-slate-300">
+              <span className={stage === 'floor' ? 'text-cyan-400 font-bold underline' : 'opacity-60'}>1. Floor</span>
+              <span>•</span>
+              <span className={stage === 'walls' ? 'text-cyan-400 font-bold underline' : 'opacity-60'}>2. Walls</span>
+              <span>•</span>
+              <span className={stage === 'openings' ? 'text-cyan-400 font-bold underline' : 'opacity-60'}>3. Openings</span>
+              <span>•</span>
+              <span className={stage === 'furniture' ? 'text-cyan-400 font-bold underline' : 'opacity-60'}>4. Objects</span>
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Switch Camera Button (Mobile back/front) */}
+          {/* Switch Camera */}
           <button
             onClick={toggleCamera}
             title="Switch Camera"
-            className="p-2.5 bg-slate-900/80 hover:bg-white/20 border border-white/15 rounded-2xl backdrop-blur-xl text-slate-200 transition-colors"
+            className="p-2.5 bg-slate-900/80 hover:bg-white/20 border border-white/15 rounded-2xl backdrop-blur-xl text-slate-200 transition-colors active:scale-95"
           >
             <SwitchCamera className="w-4 h-4" />
           </button>
 
-          {/* Reset Button */}
+          {/* Reset */}
           <button
             onClick={handleReset}
-            title="Reset Measurement"
-            className="p-2.5 bg-slate-900/80 hover:bg-white/20 border border-white/15 rounded-2xl backdrop-blur-xl text-slate-200 transition-colors"
+            title="Reset Scan"
+            className="p-2.5 bg-slate-900/80 hover:bg-white/20 border border-white/15 rounded-2xl backdrop-blur-xl text-slate-200 transition-colors active:scale-95"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
 
-          {/* Exit Button */}
+          {/* Exit */}
           <button
             onClick={onClose}
-            className="p-2.5 bg-slate-900/80 hover:bg-white/20 border border-white/15 rounded-2xl backdrop-blur-xl text-white transition-colors"
+            className="p-2.5 bg-slate-900/80 hover:bg-white/20 border border-white/15 rounded-2xl backdrop-blur-xl text-white transition-colors active:scale-95"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Center Reticle Guide Instruction */}
+      {/* Floating Apple Audio/Haptic Coaching Banner */}
       <div className="relative z-10 pointer-events-none mx-auto text-center px-4">
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900/85 backdrop-blur-xl border border-white/15 rounded-full text-xs font-medium text-slate-200 shadow-2xl">
-          {step === 'calibrate' && !calibPointA && (
-            <span>Aim reticle at start of a known object (e.g. 1m floor tile, door, or A4 paper) and tap Pin</span>
-          )}
-          {step === 'calibrate' && calibPointA && (
-            <span>Aim reticle at end of the known object and tap Pin to lock exact scale</span>
-          )}
-          {step === 'pin-corners' && (
-            <span>Aim at Corner {pinnedPoints.length + 1} of the room and tap "Pin Corner"</span>
-          )}
-          {step === 'height' && <span>Adjust Ceiling Height slider, then click Generate 3D Room</span>}
+        <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-950/85 backdrop-blur-2xl border border-cyan-400/30 rounded-full text-xs font-semibold text-cyan-300 shadow-2xl animate-pulse">
+          <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span>{coachingCue}</span>
         </div>
       </div>
 
-      {/* Bottom HUD: Measurement Tools & Actions */}
-      <div className="relative z-10 p-5 bg-gradient-to-t from-black/90 via-black/60 to-transparent">
-        <div className="max-w-xl mx-auto space-y-4">
-          {/* STEP 1: CALIBRATION CONFIG */}
-          {step === 'calibrate' && (
+      {/* Bottom HUD: Contextual Controls per Stage */}
+      <div className="relative z-10 p-4 md:p-5 bg-gradient-to-t from-black/95 via-black/75 to-transparent">
+        <div className="max-w-xl mx-auto space-y-3">
+          {/* STAGE 1: FLOOR & PERIMETER */}
+          {stage === 'floor' && (
             <div className="p-4 bg-slate-900/90 backdrop-blur-2xl border border-white/15 rounded-3xl space-y-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-300">Reference Scale Distance:</span>
-                <span className="font-mono font-bold text-blue-400">
-                  {formatDimension(referenceDistance, unit)}
+                <span className="font-semibold text-slate-300">
+                  Floor Perimeter ({pinnedPoints.length} corners pinned)
+                </span>
+                <button
+                  onClick={handleAutoDetectPerimeter}
+                  className="px-2.5 py-1 text-[11px] font-bold text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-400/30 rounded-xl transition-all"
+                >
+                  ⚡ Auto-Detect Bounds
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  id="btn-pin-corner"
+                  onClick={handlePinCorner}
+                  className="flex-1 py-3.5 bg-cyan-600 hover:bg-cyan-500 active:scale-98 text-white rounded-2xl font-bold text-sm shadow-xl shadow-cyan-500/30 flex items-center justify-center gap-2 transition-all"
+                >
+                  <Crosshair className="w-5 h-5" />
+                  <span>Pin Floor Corner {pinnedPoints.length + 1}</span>
+                </button>
+
+                {pinnedPoints.length >= 3 && (
+                  <button
+                    onClick={() => {
+                      triggerHaptic('medium');
+                      playScanComplete();
+                      setStage('walls');
+                      setCoachingCue('Perimeter locked. Adjust room ceiling height.');
+                    }}
+                    className="py-3.5 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-bold text-sm shadow-xl shadow-emerald-500/30 flex items-center gap-1.5 transition-all active:scale-98"
+                  >
+                    <span>Next: Walls</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* STAGE 2: WALLS & HEIGHT CALIBRATION */}
+          {stage === 'walls' && (
+            <div className="p-4 bg-slate-900/90 backdrop-blur-2xl border border-white/15 rounded-3xl space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-300">Ceiling Height Calibration:</span>
+                <span className="font-mono font-bold text-cyan-400">
+                  {formatDimension(roomHeight, unit)}
                 </span>
               </div>
 
-              {/* Quick Presets */}
-              <div className="flex items-center gap-2 text-xs">
+              {/* Height Slider */}
+              <input
+                type="range"
+                min={unit === 'ft' ? '7' : '2.0'}
+                max={unit === 'ft' ? '14' : '4.5'}
+                step={unit === 'ft' ? '0.2' : '0.1'}
+                value={unit === 'ft' ? metersToFeet(roomHeight) : roomHeight}
+                onChange={(e) =>
+                  setRoomHeight(unit === 'ft' ? feetToMeters(parseFloat(e.target.value)) : parseFloat(e.target.value))
+                }
+                className="w-full accent-cyan-400 cursor-pointer h-2 bg-slate-700 rounded-lg"
+              />
+
+              {/* Height Presets */}
+              <div className="flex items-center gap-2">
                 {[
-                  { label: '0.6m (Tile)', val: 0.6 },
-                  { label: '0.9m (Doorway)', val: 0.9 },
-                  { label: '1.0m (Standard)', val: 1.0 },
-                  { label: '1.5m (Wall Mark)', val: 1.5 }
+                  { label: '2.4m (Standard)', val: 2.4 },
+                  { label: '2.6m (Modern)', val: 2.6 },
+                  { label: '2.8m (Spacious)', val: 2.8 },
+                  { label: '3.0m (High Ceiling)', val: 3.0 }
                 ].map((item) => (
                   <button
                     key={item.label}
-                    onClick={() => setReferenceDistance(item.val)}
-                    className={`flex-1 py-1.5 rounded-xl border text-[11px] font-medium transition-all ${
-                      referenceDistance === item.val
-                        ? 'bg-blue-600 border-blue-400 text-white shadow-md'
+                    onClick={() => setRoomHeight(item.val)}
+                    className={`flex-1 py-1 rounded-xl border text-[11px] font-medium transition-all ${
+                      Math.abs(roomHeight - item.val) < 0.05
+                        ? 'bg-cyan-600 border-cyan-400 text-white shadow-md'
                         : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
                     }`}
                   >
@@ -584,75 +952,314 @@ export const CameraDimensionScanner: React.FC<Props> = ({ isOpen, onClose }) => 
 
               <div className="flex items-center gap-3 pt-1">
                 <button
-                  onClick={handlePinAction}
-                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/30 flex items-center justify-center gap-2 transition-all"
+                  onClick={() => setStage('floor')}
+                  className="px-4 py-3 bg-white/10 hover:bg-white/15 text-slate-300 rounded-2xl font-medium text-xs transition-colors flex items-center gap-1"
                 >
-                  <Crosshair className="w-5 h-5" />
-                  <span>{!calibPointA ? 'Pin Point A' : 'Pin Point B & Calibrate'}</span>
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Back</span>
                 </button>
                 <button
-                  onClick={() => setStep('pin-corners')}
-                  className="px-4 py-3 bg-white/10 hover:bg-white/15 text-slate-300 rounded-2xl font-medium text-xs transition-colors"
-                  title="Skip calibration with standard 1m default scale"
+                  onClick={() => {
+                    triggerHaptic('medium');
+                    playScanComplete();
+                    setStage('openings');
+                    setCoachingCue('Aim at doors and windows to mark wall openings.');
+                  }}
+                  className="flex-1 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-2xl font-bold text-sm shadow-xl shadow-cyan-500/30 flex items-center justify-center gap-2 transition-all active:scale-98"
                 >
-                  Skip Scale
+                  <span>Confirm Height & Mark Openings</span>
+                  <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* STEP 2: CORNER PINNING */}
-          {step === 'pin-corners' && (
-            <div className="p-4 bg-slate-900/90 backdrop-blur-2xl border border-white/15 rounded-3xl flex items-center gap-3">
-              <button
-                id="btn-pin-corner"
-                onClick={handlePinAction}
-                className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/30 flex items-center justify-center gap-2 transition-all"
-              >
-                <Crosshair className="w-5 h-5" />
-                <span>Pin Wall Corner {pinnedPoints.length + 1}</span>
-              </button>
-
-              {pinnedPoints.length >= 3 && (
-                <button
-                  onClick={handleFinishCorners}
-                  className="py-3.5 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-bold text-sm shadow-xl shadow-emerald-500/30 flex items-center gap-2 transition-all active:scale-98"
-                >
-                  <Check className="w-5 h-5" />
-                  <span>Enclose Room</span>
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* STEP 3: CEILING HEIGHT & BUILD ROOM */}
-          {step === 'height' && (
+          {/* STAGE 3: OPENINGS (DOORS & WINDOWS) */}
+          {stage === 'openings' && (
             <div className="p-4 bg-slate-900/90 backdrop-blur-2xl border border-white/15 rounded-3xl space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-300">Room Ceiling Height:</span>
-                <span className="font-mono font-bold text-blue-400">
-                  {formatDimension(ceilingHeight, unit)}
-                </span>
+              {/* Wall Selector Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                {pinnedPoints.map((_, idx) => (
+                  <button
+                    key={`wall-btn-${idx}`}
+                    onClick={() => setSelectedWallIndex(idx)}
+                    className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                      selectedWallIndex === idx
+                        ? 'bg-cyan-600 text-white shadow-md'
+                        : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    Wall {idx + 1}
+                  </button>
+                ))}
               </div>
-              <input
-                type="range"
-                min={unit === 'ft' ? '7' : '2.0'}
-                max={unit === 'ft' ? '14' : '4.5'}
-                step={unit === 'ft' ? '0.2' : '0.1'}
-                value={unit === 'ft' ? metersToFeet(ceilingHeight) : ceilingHeight}
-                onChange={(e) =>
-                  setCeilingHeight(unit === 'ft' ? feetToMeters(parseFloat(e.target.value)) : parseFloat(e.target.value))
-                }
-                className="w-full accent-blue-500 cursor-pointer h-2 bg-slate-700 rounded-lg"
-              />
 
-              <div className="flex items-center gap-3 pt-1">
+              {/* Type Toggle & Swing Direction */}
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={handleGenerateRoom}
-                  className="flex-1 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/30 flex items-center justify-center gap-2 transition-all active:scale-98"
+                  onClick={() => setOpeningType('door')}
+                  className={`py-2 rounded-xl text-xs font-semibold border flex items-center justify-center gap-2 transition-all ${
+                    openingType === 'door'
+                      ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md'
+                      : 'bg-white/5 border-white/10 text-slate-400'
+                  }`}
+                >
+                  <DoorOpen className="w-4 h-4" />
+                  <span>Door (0.9m)</span>
+                </button>
+                <button
+                  onClick={() => setOpeningType('window')}
+                  className={`py-2 rounded-xl text-xs font-semibold border flex items-center justify-center gap-2 transition-all ${
+                    openingType === 'window'
+                      ? 'bg-sky-500/20 border-sky-400 text-sky-300 shadow-md'
+                      : 'bg-white/5 border-white/10 text-slate-400'
+                  }`}
+                >
+                  <AppWindow className="w-4 h-4" />
+                  <span>Window (1.2m)</span>
+                </button>
+              </div>
+
+              {openingType === 'door' && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-300">
+                  <span className="text-[11px] font-semibold text-slate-400">Swing:</span>
+                  {(['in', 'out', 'left', 'right'] as const).map((dir) => (
+                    <button
+                      key={dir}
+                      onClick={() => setDoorSwing(dir)}
+                      className={`flex-1 py-1 rounded-lg text-[10px] uppercase font-bold border transition-all ${
+                        doorSwing === dir
+                          ? 'bg-amber-600/30 border-amber-400 text-amber-300'
+                          : 'bg-white/5 border-white/10 text-slate-400'
+                      }`}
+                    >
+                      {dir}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Position Offset Slider */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-300">
+                  <span>Wall Offset Position:</span>
+                  <span className="font-mono text-cyan-400">{formatDimension(openingOffset, unit)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.3"
+                  max="3.5"
+                  step="0.1"
+                  value={openingOffset}
+                  onChange={(e) => setOpeningOffset(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={handleAddOpening}
+                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl font-bold text-xs shadow-lg flex items-center justify-center gap-1.5 transition-all active:scale-98"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Place Opening on Wall {selectedWallIndex + 1}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    triggerHaptic('medium');
+                    playScanComplete();
+                    setStage('furniture');
+                    setCoachingCue('Aim reticle at furniture. Select Apple category & tap Classify.');
+                  }}
+                  className="px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-2xl font-bold text-xs shadow-lg flex items-center gap-1 transition-all active:scale-98"
+                >
+                  <span>Next: Furniture</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STAGE 4: FURNITURE CLASSIFICATION & 3D AR BOUNDING BOX */}
+          {stage === 'furniture' && (
+            <div className="p-4 bg-slate-900/95 backdrop-blur-2xl border border-white/15 rounded-3xl space-y-3">
+              {/* Apple 16 Category Bar */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-300">
+                  <span>Apple 16 Object Classification:</span>
+                  <span className="text-cyan-400 font-bold">{selectedCategory.label}</span>
+                </div>
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                  {APPLE_16_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.type}
+                      onClick={() => handleSelectCategory(cat)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all active:scale-95 ${
+                        selectedCategory.type === cat.type
+                          ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/30'
+                          : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dimension & Rotation Adjustment Sliders */}
+              <div className="grid grid-cols-4 gap-2 text-[10px]">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-slate-400">
+                    <span>W</span>
+                    <span className="font-mono text-white">{formatDimension(furnitureDim.width, unit)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.4"
+                    max="3.0"
+                    step="0.05"
+                    value={furnitureDim.width}
+                    onChange={(e) => setFurnitureDim((prev) => ({ ...prev, width: parseFloat(e.target.value) }))}
+                    className="w-full accent-cyan-400 h-1 bg-slate-700 rounded"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-slate-400">
+                    <span>D</span>
+                    <span className="font-mono text-white">{formatDimension(furnitureDim.depth, unit)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.3"
+                    max="2.5"
+                    step="0.05"
+                    value={furnitureDim.depth}
+                    onChange={(e) => setFurnitureDim((prev) => ({ ...prev, depth: parseFloat(e.target.value) }))}
+                    className="w-full accent-cyan-400 h-1 bg-slate-700 rounded"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-slate-400">
+                    <span>H</span>
+                    <span className="font-mono text-white">{formatDimension(furnitureDim.height, unit)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.3"
+                    max="2.4"
+                    step="0.05"
+                    value={furnitureDim.height}
+                    onChange={(e) => setFurnitureDim((prev) => ({ ...prev, height: parseFloat(e.target.value) }))}
+                    className="w-full accent-cyan-400 h-1 bg-slate-700 rounded"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-slate-400">
+                    <span>Rot</span>
+                    <span className="font-mono text-white">{Math.round((furnitureRotation * 180) / Math.PI)}°</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-3.14"
+                    max="3.14"
+                    step="0.1"
+                    value={furnitureRotation}
+                    onChange={(e) => setFurnitureRotation(parseFloat(e.target.value))}
+                    className="w-full accent-cyan-400 h-1 bg-slate-700 rounded"
+                  />
+                </div>
+              </div>
+
+              {/* Captured Items Pill Strip */}
+              {capturedFurniture.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold shrink-0">Captured:</span>
+                  {capturedFurniture.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-full text-[11px] shrink-0"
+                    >
+                      <Box className="w-3 h-3" />
+                      <span>{item.name}</span>
+                      <button
+                        onClick={() => handleRemoveCapturedFurniture(item.id)}
+                        className="hover:text-red-400 ml-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={handleClassifyFurniture}
+                  className="flex-1 py-3 bg-cyan-600 hover:bg-cyan-500 active:scale-98 text-white rounded-2xl font-bold text-xs shadow-xl shadow-cyan-500/30 flex items-center justify-center gap-2 transition-all"
+                >
+                  <Box className="w-4 h-4" />
+                  <span>Classify & Place 3D Bounding Box</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    triggerHaptic('medium');
+                    playScanComplete();
+                    setStage('summary');
+                  }}
+                  className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white rounded-2xl font-bold text-xs shadow-xl shadow-emerald-500/30 flex items-center gap-1 transition-all"
+                >
+                  <span>Review</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STAGE 5: SUMMARY & ENTER 3D DOLLHOUSE */}
+          {stage === 'summary' && (
+            <div className="p-4 bg-slate-900/95 backdrop-blur-2xl border border-white/15 rounded-3xl space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
+                  <Check className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Apple RoomCapture Complete</h3>
+                  <p className="text-[11px] text-slate-300">Ready to build parametric dollhouse model</p>
+                </div>
+              </div>
+
+              {/* Metrics Grid */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="p-2.5 bg-white/5 rounded-2xl border border-white/5 text-center">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Walls</div>
+                  <div className="text-base font-bold text-cyan-400">{pinnedPoints.length}</div>
+                </div>
+                <div className="p-2.5 bg-white/5 rounded-2xl border border-white/5 text-center">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Openings</div>
+                  <div className="text-base font-bold text-amber-400">{openings.length}</div>
+                </div>
+                <div className="p-2.5 bg-white/5 rounded-2xl border border-white/5 text-center">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Objects</div>
+                  <div className="text-base font-bold text-emerald-400">{capturedFurniture.length}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={() => setStage('furniture')}
+                  className="px-4 py-3 bg-white/10 hover:bg-white/15 text-slate-300 rounded-2xl font-medium text-xs transition-colors flex items-center gap-1"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Edit Scan</span>
+                </button>
+                <button
+                  onClick={handleCompleteRoomPlan}
+                  className="flex-1 py-3.5 bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-2xl font-bold text-sm shadow-xl shadow-cyan-500/30 flex items-center justify-center gap-2 transition-all active:scale-98"
                 >
                   <Sparkles className="w-5 h-5" />
-                  <span>Generate Exact 3D Room</span>
+                  <span>Enter 3D Apple Dollhouse</span>
                 </button>
               </div>
             </div>

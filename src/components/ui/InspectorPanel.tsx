@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { useRoomStore } from '../../store/useRoomStore';
 import { metersToFeet, feetToMeters, formatDimension, formatArea, calculateRoomArea, distance2D } from '../../utils/math';
-import type { FloorStyle, WallStyle, LightingPreset } from '../../types/room';
+import type { FloorStyle, WallStyle, LightingPreset, FurnitureType, ConfidenceLevel } from '../../types/room';
+import { APPLE_16_CATEGORIES } from '../../utils/appleCategories';
 import {
   Sliders,
   Trash2,
@@ -120,6 +121,51 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             >
               <X className="w-4 h-4" />
             </button>
+          </div>
+
+          {/* Apple RoomPlan Classification Picker */}
+          <div className="space-y-2 p-3 bg-cyan-500/10 border border-cyan-400/30 rounded-2xl">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-cyan-300">Apple RoomPlan Type</span>
+              <div className="flex items-center gap-1">
+                {(['high', 'medium', 'low'] as ConfidenceLevel[]).map((conf) => (
+                  <button
+                    key={conf}
+                    onClick={() => updateObject(selectedObj.id, { confidence: conf })}
+                    className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md transition-all ${
+                      (selectedObj.confidence || 'high') === conf
+                        ? conf === 'high'
+                          ? 'bg-emerald-500 text-white'
+                          : conf === 'medium'
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-slate-600 text-white'
+                        : 'bg-white/5 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {conf}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <select
+              value={selectedObj.type}
+              onChange={(e) => {
+                const newType = e.target.value as FurnitureType;
+                const catConfig = APPLE_16_CATEGORIES.find((c) => c.type === newType);
+                updateObject(selectedObj.id, {
+                  type: newType,
+                  category: catConfig?.category || selectedObj.category,
+                  name: catConfig?.label || selectedObj.name
+                });
+              }}
+              className="w-full py-1.5 px-2.5 bg-slate-900/90 border border-white/20 rounded-xl text-xs font-semibold text-white focus:outline-none focus:border-cyan-400"
+            >
+              {APPLE_16_CATEGORIES.map((cat) => (
+                <option key={cat.type} value={cat.type}>
+                  {cat.label} ({cat.category})
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Dimensions (W × D × H) */}

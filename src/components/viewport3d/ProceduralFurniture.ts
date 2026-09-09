@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { RoomObject } from '../../types/room';
+import type { RoomObject, RenderStyle } from '../../types/room';
 
 // Apple RoomPlan-inspired color palette
 export const PALETTES = {
@@ -36,13 +36,18 @@ export const PALETTES = {
 /**
  * Creates procedural 3D model for any RoomObject
  */
-export function createProceduralFurniture(obj: RoomObject, isSelected = false): THREE.Group {
+export function createProceduralFurniture(
+  obj: RoomObject,
+  isSelected = false,
+  renderStyle: RenderStyle = 'dollhouse'
+): THREE.Group {
   const group = new THREE.Group();
   group.name = `furniture-${obj.id}`;
   group.userData = { id: obj.id, type: 'object' };
 
   const { width: W, depth: D, height: H } = obj.dimensions;
-  const style = obj.materialStyle || 'modern_white';
+  const isDollhouse = renderStyle === 'dollhouse';
+  const style = isDollhouse ? 'modern_white' : (obj.materialStyle || 'modern_white');
   const colors = PALETTES[style] || PALETTES.modern_white;
 
   const matPrimary = new THREE.MeshStandardMaterial({
@@ -265,6 +270,7 @@ export function createProceduralFurniture(obj: RoomObject, isSelected = false): 
       break;
     }
 
+    case 'television':
     case 'tv': {
       // OLED ultra-thin TV screen
       const screenH = H * 0.75;
@@ -317,6 +323,106 @@ export function createProceduralFurniture(obj: RoomObject, isSelected = false): 
       break;
     }
 
+    case 'stove':
+    case 'oven': {
+      // Cooktop & Oven
+      addMesh(new THREE.BoxGeometry(W, H, D), matPrimary, 0, H / 2, 0);
+      // Cooktop glass surface
+      addMesh(new THREE.BoxGeometry(W * 0.94, 0.01, D * 0.94), matDark, 0, H + 0.005, 0);
+      // 4 Burner rings
+      const bRad = Math.min(W, D) * 0.16;
+      const bOffX = W * 0.22;
+      const bOffZ = D * 0.22;
+      [-1, 1].forEach(sx => {
+        [-1, 1].forEach(sz => {
+          addMesh(new THREE.CylinderGeometry(bRad, bRad, 0.015, 16), matAccent, sx * bOffX, H + 0.01, sz * bOffZ);
+        });
+      });
+      // Oven door window
+      addMesh(new THREE.BoxGeometry(W * 0.75, H * 0.45, 0.01), matDark, 0, H * 0.4, D / 2 + 0.005);
+      break;
+    }
+
+    case 'dishwasher': {
+      addMesh(new THREE.BoxGeometry(W, H, D), matPrimary, 0, H / 2, 0);
+      // Front stainless control panel & bar handle
+      addMesh(new THREE.BoxGeometry(W * 0.9, 0.08, 0.01), matDark, 0, H - 0.08, D / 2 + 0.005);
+      addMesh(new THREE.BoxGeometry(W * 0.6, 0.02, 0.03), matAccent, 0, H - 0.18, D / 2 + 0.015);
+      break;
+    }
+
+    case 'sink': {
+      // Cabinet base
+      const topH = 0.04;
+      addMesh(new THREE.BoxGeometry(W, H - topH, D), matSecondary, 0, (H - topH) / 2, 0);
+      // Countertop
+      addMesh(new THREE.BoxGeometry(W + 0.02, topH, D + 0.02), matPrimary, 0, H - topH / 2, 0);
+      // Recessed sink basin
+      addMesh(new THREE.BoxGeometry(W * 0.65, 0.015, D * 0.65), matDark, 0, H + 0.002, 0);
+      // Chrome faucet tap
+      addMesh(new THREE.CylinderGeometry(0.015, 0.015, 0.22, 12), matAccent, 0, H + 0.11, -D * 0.28);
+      addMesh(new THREE.BoxGeometry(0.015, 0.015, 0.12), matAccent, 0, H + 0.22, -D * 0.28 + 0.06);
+      break;
+    }
+
+    case 'washerDryer': {
+      addMesh(new THREE.BoxGeometry(W, H, D), matPrimary, 0, H / 2, 0);
+      // Front round glass drum door
+      const drumRad = Math.min(W, H) * 0.32;
+      addMesh(new THREE.CylinderGeometry(drumRad, drumRad, 0.02, 24), matDark, 0, H * 0.45, D / 2 + 0.01, Math.PI / 2);
+      // Control panel dial
+      addMesh(new THREE.CylinderGeometry(0.035, 0.035, 0.015, 16), matAccent, -W * 0.25, H - 0.08, D / 2 + 0.008, Math.PI / 2);
+      break;
+    }
+
+    case 'toilet': {
+      // Tank
+      const tankW = W * 0.75;
+      const tankD = D * 0.35;
+      const tankH = H * 0.55;
+      addMesh(new THREE.BoxGeometry(tankW, tankH, tankD), matPrimary, 0, H - tankH / 2, -D / 2 + tankD / 2);
+      // Bowl base
+      const bowlW = W * 0.65;
+      const bowlD = D * 0.6;
+      const bowlH = H * 0.45;
+      addMesh(new THREE.BoxGeometry(bowlW, bowlH, bowlD), matPrimary, 0, bowlH / 2, D / 2 - bowlD / 2);
+      break;
+    }
+
+    case 'bathtub': {
+      // Outer rim
+      addMesh(new THREE.BoxGeometry(W, H, D), matPrimary, 0, H / 2, 0);
+      // Inner tub basin (darker inner lining)
+      addMesh(new THREE.BoxGeometry(W * 0.85, 0.02, D * 0.85), matSecondary, 0, H - 0.02, 0);
+      break;
+    }
+
+    case 'fireplace': {
+      // Hearth surround
+      addMesh(new THREE.BoxGeometry(W, H, D), matSecondary, 0, H / 2, 0);
+      // Firebox cavity
+      const fireboxW = W * 0.65;
+      const fireboxH = H * 0.6;
+      addMesh(new THREE.BoxGeometry(fireboxW, fireboxH, D * 0.7), matDark, 0, fireboxH / 2 + 0.05, D * 0.16);
+      // Glowing warm ember plate
+      const matEmber = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xea580c, emissiveIntensity: 0.6 });
+      addMesh(new THREE.BoxGeometry(fireboxW * 0.7, 0.04, D * 0.4), matEmber, 0, 0.08, D * 0.16);
+      break;
+    }
+
+    case 'stairs': {
+      // Ascending staircase flight
+      const steps = 6;
+      const stepH = H / steps;
+      const stepD = D / steps;
+      for (let s = 0; s < steps; s++) {
+        const thisH = (s + 1) * stepH;
+        const curZ = -D / 2 + s * stepD + stepD / 2;
+        addMesh(new THREE.BoxGeometry(W, thisH, stepD), matPrimary, 0, thisH / 2, curZ);
+      }
+      break;
+    }
+
     default: {
       // Fallback clean box
       addMesh(new THREE.BoxGeometry(W, H, D), matPrimary, 0, H / 2, 0);
@@ -324,15 +430,15 @@ export function createProceduralFurniture(obj: RoomObject, isSelected = false): 
     }
   }
 
-  // Apple RoomPlan-style Bounding Wireframe (Active when selected or in scanner)
+  // Apple RoomPlan-style Bounding Wireframe (Active in Dollhouse or when selected)
   const boxGeom = new THREE.BoxGeometry(W, H, D);
   const wireGeom = new THREE.EdgesGeometry(boxGeom);
-  const wireColor = isSelected ? 0x007aff : 0x8e8e93;
+  const wireColor = isSelected ? 0x007aff : (isDollhouse ? 0x0284c7 : 0x8e8e93);
   const wireMat = new THREE.LineBasicMaterial({
     color: wireColor,
     linewidth: isSelected ? 2 : 1,
     transparent: true,
-    opacity: isSelected ? 0.95 : 0.25
+    opacity: isSelected ? 0.95 : (isDollhouse ? 0.65 : 0.25)
   });
   const wireMesh = new THREE.LineSegments(wireGeom, wireMat);
   wireMesh.name = 'Wireframe';

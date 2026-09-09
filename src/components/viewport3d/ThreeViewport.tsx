@@ -8,7 +8,7 @@ import { createProceduralFurniture } from './ProceduralFurniture';
 import { formatDimension, snapToGrid } from '../../utils/math';
 import { getFloorMaterial } from '../../utils/textures';
 import { load3DModelFile } from '../../utils/meshLoader';
-import { Box, Compass, Eye, RotateCw, UploadCloud, Sun, Moon, Sparkles, Flame } from 'lucide-react';
+import { Box, Compass, Eye, RotateCw, UploadCloud, Sun, Moon, Sparkles, Flame, Layers } from 'lucide-react';
 
 export const ThreeViewport: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -37,6 +37,8 @@ export const ThreeViewport: React.FC = () => {
   const selectedId = useRoomStore((state) => state.selectedId);
   const selectedType = useRoomStore((state) => state.selectedType);
   const unit = useRoomStore((state) => state.unit);
+  const renderStyle = useRoomStore((state) => state.renderStyle);
+  const setRenderStyle = useRoomStore((state) => state.setRenderStyle);
   const floorStyle = useRoomStore((state) => state.floorStyle);
   const customFloorTexture = useRoomStore((state) => state.customFloorTexture);
   const wallStyle = useRoomStore((state) => state.wallStyle);
@@ -345,10 +347,10 @@ export const ThreeViewport: React.FC = () => {
 
     walls.forEach((wall) => {
       const isSelected = selectedId === wall.id && selectedType === 'wall';
-      const wallMesh = buildWallMesh(wall, isSelected, unit, wallStyle, customWallTexture || undefined);
+      const wallMesh = buildWallMesh(wall, isSelected, unit, wallStyle, customWallTexture || undefined, renderStyle);
       group.add(wallMesh);
     });
-  }, [walls, selectedId, selectedType, unit, wallStyle, customWallTexture]);
+  }, [walls, selectedId, selectedType, unit, wallStyle, customWallTexture, renderStyle]);
 
   // Re-render Furniture Objects when objects or selection changes
   useEffect(() => {
@@ -362,7 +364,7 @@ export const ThreeViewport: React.FC = () => {
 
     objects.forEach((obj) => {
       const isSelected = selectedId === obj.id && selectedType === 'object';
-      const objGroup = createProceduralFurniture(obj, isSelected);
+      const objGroup = createProceduralFurniture(obj, isSelected, renderStyle);
       group.add(objGroup);
 
       if (isSelected) {
@@ -378,7 +380,7 @@ export const ThreeViewport: React.FC = () => {
         transformControlsRef.current.detach();
       }
     }
-  }, [objects, selectedId, selectedType]);
+  }, [objects, selectedId, selectedType, renderStyle]);
 
   // Update 3D Dimension Overlays for Selected Object
   useEffect(() => {
@@ -530,6 +532,32 @@ export const ThreeViewport: React.FC = () => {
           <Compass className="w-3.5 h-3.5" />
           <span>Top</span>
         </button>
+
+        {/* Apple Dollhouse vs Textured Mode Switcher */}
+        <div className="flex items-center p-0.5 bg-white/5 rounded-xl border border-white/10">
+          <button
+            onClick={() => setRenderStyle('dollhouse')}
+            className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-all ${
+              renderStyle === 'dollhouse'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Sparkles className="w-3 h-3 text-cyan-300" />
+            <span>Dollhouse</span>
+          </button>
+          <button
+            onClick={() => setRenderStyle('textured')}
+            className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-all ${
+              renderStyle === 'textured'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Layers className="w-3 h-3" />
+            <span>Materials</span>
+          </button>
+        </div>
 
         {selectedType === 'object' && (
           <div className="flex items-center gap-1 pl-2 border-l border-white/15">

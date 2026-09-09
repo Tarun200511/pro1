@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
+import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
 import type { Wall, RoomObject, AppleRoomPlanSchema, UnitType } from '../types/room';
 import { calculateRoomArea, distance2D } from './math';
 
@@ -166,3 +167,31 @@ export function exportSceneOBJ(scene: THREE.Scene, filename = 'room_model.obj') 
   const result = exporter.parse(exportGroup);
   downloadFile(result, filename, 'text/plain');
 }
+
+/**
+ * Exports Three.js scene to Apple USDZ (for native iOS / QuickLook AR)
+ */
+export async function exportSceneUSDZ(scene: THREE.Scene, filename = 'room_model') {
+  const exporter = new USDZExporter();
+  const exportGroup = new THREE.Group();
+
+  scene.traverse(child => {
+    if (
+      child instanceof THREE.Mesh &&
+      !child.name.includes('Helper') &&
+      !child.name.includes('Gizmo') &&
+      !child.name.includes('Dimension') &&
+      !child.name.includes('FloorGrid')
+    ) {
+      exportGroup.add(child.clone());
+    }
+  });
+
+  try {
+    const arrayBuffer = await exporter.parseAsync(exportGroup);
+    downloadFile(arrayBuffer as BlobPart, `${filename}.usdz`, 'model/vnd.usdz+zip');
+  } catch (err) {
+    console.error('Error exporting USDZ:', err);
+  }
+}
+
