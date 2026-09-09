@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "mobile:build": "npm run build && npx cap sync",
     "cap:sync": "npx cap sync",
-    "cap:android": "npx cap open android"
+    "cap:android": "npx cap open android",
+    "build:apk": "npm run build && npx cap sync && cd android && gradlew.bat assembleDebug && copy app\\build\\outputs\\apk\\debug\\app-debug.apk ..\\RoomPlan3D-debug.apk"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.1",
