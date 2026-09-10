@@ -13,7 +13,8 @@ import {
   Grid,
   Trash2,
   Copy,
-  Camera
+  Camera,
+  Layers
 } from 'lucide-react';
 
 interface Props {
@@ -44,6 +45,7 @@ export const MobileBottomBar: React.FC<Props> = ({
   const redo = useRoomStore((state) => state.redo);
   const history = useRoomStore((state) => state.history);
   const openCameraScanner = useRoomStore((state) => state.openCameraScanner);
+  const openPlan2DModal = useRoomStore((state) => state.openPlan2DModal);
 
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
@@ -68,7 +70,7 @@ export const MobileBottomBar: React.FC<Props> = ({
 
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex flex-col items-center pointer-events-none">
-      {/* Floating Contextual Quick Actions Bar (Undo, Redo, Snap, and Selection Actions) */}
+      {/* Floating Contextual Quick Actions Bar (Undo, Redo, Snap, 2D->3D, and Selection Actions) */}
       <div className="pointer-events-auto mb-2 flex items-center gap-1.5 px-3.5 py-1.5 vision-panel rounded-full shadow-2xl border border-white/15">
         <button
           onClick={() => {
@@ -107,6 +109,22 @@ export const MobileBottomBar: React.FC<Props> = ({
           }`}
         >
           <Grid className="w-4 h-4" />
+        </button>
+
+        <div className="w-px h-4 bg-white/20 mx-0.5" />
+
+        {/* Quick 2D to 3D Extruder Trigger */}
+        <button
+          onClick={() => {
+            triggerHaptic('medium');
+            openPlan2DModal();
+          }}
+          aria-label="2D Plan to 3D Extruder"
+          title="2D Plan to 3D Extruder"
+          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-indigo-300 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 active:scale-90 transition-all font-bold text-[10px]"
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>2D→3D</span>
         </button>
 
         {/* Selected Item Actions on Mobile */}

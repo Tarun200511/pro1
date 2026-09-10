@@ -9,6 +9,7 @@ import { ExportModal } from './components/ui/ExportModal';
 import { ThreeViewport } from './components/viewport3d/ThreeViewport';
 import { FloorPlanCanvas } from './components/canvas2d/FloorPlanCanvas';
 import { CameraDimensionScanner } from './components/scanner/CameraDimensionScanner';
+import { Plan2DTo3DModal } from './components/plan2d/Plan2DTo3DModal';
 import { Box, Compass } from 'lucide-react';
 
 export function App() {
@@ -190,6 +191,9 @@ export function App() {
           onClose={closeCameraScanner}
         />
       )}
+
+      {/* 2D Plan to 3D Extruder Modal */}
+      <Plan2DTo3DModal />
     </div>
   );
 }

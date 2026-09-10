@@ -9,7 +9,8 @@ import {
   Redo2,
   Volume2,
   VolumeX,
-  Camera
+  Camera,
+  Layers
 } from 'lucide-react';
 import { triggerHaptic } from '../../utils/sound';
 
@@ -29,6 +30,7 @@ export const Toolbar: React.FC<Props> = ({ onToggleFurnitureDrawer, isFurnitureD
   const redo = useRoomStore((state) => state.redo);
   const history = useRoomStore((state) => state.history);
   const openCameraScanner = useRoomStore((state) => state.openCameraScanner);
+  const openPlan2DModal = useRoomStore((state) => state.openPlan2DModal);
 
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
@@ -90,6 +92,19 @@ export const Toolbar: React.FC<Props> = ({ onToggleFurnitureDrawer, isFurnitureD
         }`}
       >
         <Armchair className="w-5 h-5" />
+      </button>
+
+      {/* 2D to 3D Extruder Tool */}
+      <button
+        id="tool-plan2d-extruder"
+        onClick={() => {
+          triggerHaptic('medium');
+          openPlan2DModal();
+        }}
+        title="2D Plan to 3D Extruder"
+        className="p-2.5 rounded-2xl text-indigo-400 hover:text-white hover:bg-indigo-500/20 active:scale-90 transition-all duration-200 shadow-md shadow-indigo-500/10"
+      >
+        <Layers className="w-5 h-5" />
       </button>
 
       {/* Direct On-Spot Camera Scanner */}

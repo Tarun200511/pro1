@@ -68,6 +68,11 @@ interface RoomState {
   openCameraScanner: () => void;
   closeCameraScanner: () => void;
 
+  // 2D to 3D Blueprint Extruder
+  isPlan2DModalOpen: boolean;
+  openPlan2DModal: () => void;
+  closePlan2DModal: () => void;
+
   // Sound
   isMuted: boolean;
 
@@ -248,6 +253,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
   scanStage: '',
   selectedScanPreset: null,
   isCameraScannerOpen: false,
+  isPlan2DModalOpen: false,
 
   isMuted: false,
 
@@ -481,6 +487,16 @@ export const useRoomStore = create<RoomState>((set, get) => ({
   closeCameraScanner: () => {
     playUiClick();
     set({ isCameraScannerOpen: false });
+  },
+
+  openPlan2DModal: () => {
+    playUiClick();
+    set({ isPlan2DModalOpen: true });
+  },
+
+  closePlan2DModal: () => {
+    playUiClick();
+    set({ isPlan2DModalOpen: false });
   },
 
   loadPreset: (presetId) => {

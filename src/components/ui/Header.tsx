@@ -1,6 +1,6 @@
 import React from 'react';
 import { useRoomStore } from '../../store/useRoomStore';
-import { Box, Download, Camera } from 'lucide-react';
+import { Box, Download, Camera, Layers } from 'lucide-react';
 import { ScannerOverlay } from '../scanner/ScannerOverlay';
 import { DynamicIsland } from './DynamicIsland';
 import { triggerHaptic } from '../../utils/sound';
@@ -12,6 +12,7 @@ interface Props {
 export const Header: React.FC<Props> = ({ onOpenExportModal }) => {
   const roomName = useRoomStore((state) => state.roomName);
   const openCameraScanner = useRoomStore((state) => state.openCameraScanner);
+  const openPlan2DModal = useRoomStore((state) => state.openPlan2DModal);
 
   return (
     <header className="pt-[calc(var(--sat)+0.6rem)] pb-2 px-3 sm:px-5 md:h-18 md:py-0 flex items-center justify-between vision-panel border-b border-white/10 select-none z-40 relative text-white">
@@ -42,8 +43,22 @@ export const Header: React.FC<Props> = ({ onOpenExportModal }) => {
         <DynamicIsland />
       </div>
 
-      {/* Right Action Tools: Direct Camera Shutter, Templates, Export */}
+      {/* Right Action Tools: 2D->3D Extruder, Direct Camera Shutter, Templates, Export */}
       <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        {/* 2D PLAN TO 3D EXTRUDER HERO BUTTON */}
+        <button
+          id="btn-plan-2d-to-3d-header"
+          onClick={() => {
+            triggerHaptic('medium');
+            openPlan2DModal();
+          }}
+          className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 bg-gradient-to-r from-indigo-500/30 to-purple-600/30 hover:from-indigo-500/50 hover:to-purple-600/50 border border-indigo-400/40 text-indigo-200 hover:text-white text-[11px] sm:text-xs font-bold rounded-full transition-all active:scale-95 shadow-md shadow-indigo-500/20"
+          title="Extrude 2D Floor Plan Blueprint into 3D Model"
+        >
+          <Layers className="w-3.5 h-3.5 text-indigo-300 animate-pulse" />
+          <span className="hidden sm:inline">2D → 3D</span>
+        </button>
+
         {/* HERO ON-SPOT CAMERA BUTTON */}
         <button
           id="btn-onspot-camera-header"
