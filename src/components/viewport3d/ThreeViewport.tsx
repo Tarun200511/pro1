@@ -8,6 +8,7 @@ import { createProceduralFurniture } from './ProceduralFurniture';
 import { formatDimension, snapToGrid } from '../../utils/math';
 import { getFloorMaterial } from '../../utils/textures';
 import { load3DModelFile } from '../../utils/meshLoader';
+import { triggerHaptic } from '../../utils/sound';
 import { Box, Compass, Eye, RotateCw, UploadCloud, Sun, Moon, Sparkles, Flame, Layers } from 'lucide-react';
 
 export const ThreeViewport: React.FC = () => {
@@ -505,52 +506,67 @@ export const ThreeViewport: React.FC = () => {
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing touch-none" />
 
       {/* Floating 3D Controls Pill */}
-      <div className="absolute top-3 right-3 md:left-4 md:right-auto z-10 flex items-center gap-1.5 p-1.5 bg-slate-900/85 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-w-[calc(100vw-1.5rem)] overflow-x-auto no-scrollbar">
+      <div className="absolute top-3 right-3 md:left-24 md:right-auto z-10 flex items-center gap-1.5 p-1.5 vision-panel rounded-full shadow-2xl border border-white/15 backdrop-blur-3xl max-w-[calc(100vw-1.5rem)] overflow-x-auto no-scrollbar">
         <button
-          onClick={() => setCameraPreset('perspective')}
+          onClick={() => {
+            triggerHaptic('light');
+            setCameraPreset('perspective');
+          }}
           title="Perspective View"
-          className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1.5 text-xs font-medium"
+          className="px-3 py-1.5 rounded-full text-slate-300 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1.5 text-xs font-medium active:scale-95"
         >
-          <Eye className="w-3.5 h-3.5" />
+          <Eye className="w-3.5 h-3.5 text-cyan-400" />
           <span>3D Orbit</span>
         </button>
 
         <button
-          onClick={() => setCameraPreset('isometric')}
+          onClick={() => {
+            triggerHaptic('light');
+            setCameraPreset('isometric');
+          }}
           title="Isometric View"
-          className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1.5 text-xs font-medium"
+          className="px-3 py-1.5 rounded-full text-slate-300 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1.5 text-xs font-medium active:scale-95"
         >
-          <Box className="w-3.5 h-3.5" />
+          <Box className="w-3.5 h-3.5 text-blue-400" />
           <span>Isometric</span>
         </button>
 
         <button
-          onClick={() => setCameraPreset('top')}
+          onClick={() => {
+            triggerHaptic('light');
+            setCameraPreset('top');
+          }}
           title="Top-Down Plan"
-          className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1.5 text-xs font-medium"
+          className="px-3 py-1.5 rounded-full text-slate-300 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1.5 text-xs font-medium active:scale-95"
         >
-          <Compass className="w-3.5 h-3.5" />
+          <Compass className="w-3.5 h-3.5 text-indigo-400" />
           <span>Top</span>
         </button>
 
         {/* Apple Dollhouse vs Textured Mode Switcher */}
-        <div className="flex items-center p-0.5 bg-white/5 rounded-xl border border-white/10">
+        <div className="flex items-center p-0.5 vision-pill rounded-full">
           <button
-            onClick={() => setRenderStyle('dollhouse')}
-            className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-all ${
+            onClick={() => {
+              triggerHaptic('selection');
+              setRenderStyle('dollhouse');
+            }}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1 transition-all ${
               renderStyle === 'dollhouse'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md vision-glow-cyan'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Sparkles className="w-3 h-3 text-cyan-300" />
+            <Sparkles className="w-3 h-3 text-cyan-200" />
             <span>Dollhouse</span>
           </button>
           <button
-            onClick={() => setRenderStyle('textured')}
-            className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-all ${
+            onClick={() => {
+              triggerHaptic('selection');
+              setRenderStyle('textured');
+            }}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1 transition-all ${
               renderStyle === 'textured'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md vision-glow-cyan'
                 : 'text-slate-400 hover:text-white'
             }`}
           >

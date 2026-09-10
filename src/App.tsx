@@ -97,12 +97,12 @@ export function App() {
   }, [selectedId, selectedType, removeObject, removeWall, duplicateObject, clearSelection, undo, redo, setActiveTool]);
 
   return (
-    <div className="relative w-screen h-[100dvh] flex flex-col bg-[#0b0d13] text-white overflow-hidden select-none">
-      {/* Top VisionOS Header */}
+    <div className="relative w-screen h-[100dvh] flex flex-col spatial-mesh-bg text-slate-100 overflow-hidden select-none">
+      {/* Top VisionOS Header with Dynamic Island */}
       <Header onOpenExportModal={() => setIsExportModalOpen(true)} />
 
       {/* Main Viewport Container */}
-      <main className="relative flex-1 w-full h-[calc(100dvh-4rem)] overflow-hidden pb-16 md:pb-0">
+      <main className="relative flex-1 w-full h-[calc(100dvh-4.5rem)] overflow-hidden pb-18 md:pb-0">
         {/* 3D Mode */}
         {viewMode === '3d' && (
           <div className="w-full h-full">
@@ -122,18 +122,18 @@ export function App() {
           <div className="grid grid-cols-1 md:grid-cols-2 w-full h-full divide-y md:divide-y-0 md:divide-x divide-white/10">
             {/* Left: 2D Floor Plan */}
             <div className="relative w-full h-full">
-              <div className="absolute top-3 right-4 z-10 flex items-center gap-1.5 px-3 py-1 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-full text-[11px] font-semibold tracking-wide text-slate-300">
-                <Compass className="w-3.5 h-3.5 text-blue-400" />
-                <span>2D Architectural Blueprint</span>
+              <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 px-3.5 py-1.5 vision-panel rounded-full text-[11px] font-semibold tracking-wide text-slate-200 shadow-xl border border-white/15">
+                <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="font-display">2D Architectural Blueprint</span>
               </div>
               <FloorPlanCanvas />
             </div>
 
             {/* Right: 3D WebGL */}
             <div className="relative w-full h-full">
-              <div className="absolute top-3 right-4 z-10 flex items-center gap-1.5 px-3 py-1 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-full text-[11px] font-semibold tracking-wide text-slate-300">
-                <Box className="w-3.5 h-3.5 text-blue-400" />
-                <span>3D Spatial Perspective</span>
+              <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 px-3.5 py-1.5 vision-panel rounded-full text-[11px] font-semibold tracking-wide text-slate-200 shadow-xl border border-white/15">
+                <Box className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="font-display">3D Spatial Perspective</span>
               </div>
               <ThreeViewport />
             </div>

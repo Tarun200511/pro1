@@ -200,6 +200,7 @@ interface Props {
 export const FurnitureDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
   const addObject = useRoomStore((state) => state.addObject);
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   if (!isOpen) return null;
 
@@ -215,13 +216,18 @@ export const FurnitureDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
     { id: 'architectural', label: 'Architecture' }
   ];
 
-  const filteredItems =
-    activeCategory === 'all'
-      ? CATALOG_ITEMS
-      : CATALOG_ITEMS.filter((item) => item.category === activeCategory);
+  const filteredItems = CATALOG_ITEMS.filter((item) => {
+    const matchesCategory = activeCategory === 'all' || item.category === activeCategory;
+    const matchesSearch =
+      searchQuery.trim() === '' ||
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.category.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   const handleAddItem = (item: CatalogItem) => {
-    triggerHaptic('light');
+    triggerHaptic('medium');
     const newObj: RoomObject = {
       id: `obj-${Date.now()}`,
       category: item.category,
@@ -237,18 +243,18 @@ export const FurnitureDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 max-h-[82vh] md:fixed md:inset-auto md:top-16 md:left-4 md:z-40 md:w-80 md:max-h-[calc(100vh-6rem)] flex flex-col bg-slate-900/95 backdrop-blur-2xl border-t md:border border-white/15 rounded-t-3xl md:rounded-3xl p-5 pb-[calc(var(--sab)+1.5rem)] md:pb-5 shadow-2xl text-white select-none">
+    <div className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] md:fixed md:inset-auto md:top-20 md:left-20 md:z-40 md:w-88 md:max-h-[calc(100vh-6.5rem)] flex flex-col vision-panel border-t md:border border-white/15 rounded-t-3xl md:rounded-3xl p-5 pb-[calc(var(--sab)+1.5rem)] md:pb-5 shadow-2xl text-white select-none backdrop-blur-3xl animate-fade-in">
       {/* Mobile Top Sheet Grab Handle */}
       <div className="md:hidden flex flex-col items-center pb-2">
-        <div className="w-10 h-1 bg-white/30 rounded-full mb-2" />
+        <div className="w-12 h-1 bg-white/25 rounded-full mb-2" />
       </div>
 
       {/* Header */}
       <div className="flex items-center justify-between pb-3 border-b border-white/10">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="font-bold text-sm tracking-tight">Apple RoomPlan Library</h3>
-            <span className="px-2 py-0.5 text-[9px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-full">
+            <h3 className="font-bold text-sm tracking-tight font-display text-white">Apple RoomPlan Library</h3>
+            <span className="px-2 py-0.5 text-[9px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/35 rounded-full font-mono-digits">
               16 Types
             </span>
           </div>
@@ -256,10 +262,29 @@ export const FurnitureDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+          className="p-1.5 text-slate-400 hover:text-white rounded-full hover:bg-white/10 transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
+      </div>
+
+      {/* Instant Search Bar */}
+      <div className="mt-3 relative">
+        <input
+          type="text"
+          placeholder="Search chairs, beds, tables..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full px-3.5 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400/60 focus:bg-white/10 transition-all font-medium"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 text-xs"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Category Pills */}
@@ -271,9 +296,9 @@ export const FurnitureDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
               triggerHaptic('selection');
               setActiveCategory(cat.id);
             }}
-            className={`px-3 py-1 rounded-xl whitespace-nowrap text-xs font-medium transition-all ${
+            className={`px-3 py-1 rounded-full whitespace-nowrap text-xs font-medium transition-all ${
               activeCategory === cat.id
-                ? 'bg-cyan-600 text-white font-semibold shadow-md shadow-cyan-500/25'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold shadow-md shadow-cyan-500/25 vision-glow-cyan'
                 : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white'
             }`}
           >
@@ -284,33 +309,39 @@ export const FurnitureDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
 
       {/* Items Grid */}
       <div className="overflow-y-auto space-y-2 mt-1 pr-1 flex-1">
-        {filteredItems.map((item) => (
-          <div
-            key={item.name}
-            onClick={() => handleAddItem(item)}
-            className="group flex items-center justify-between p-3 bg-white/5 hover:bg-cyan-600/15 border border-white/5 hover:border-cyan-500/30 rounded-2xl cursor-pointer transition-all active:scale-[0.98]"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-slate-800 text-cyan-400 group-hover:bg-cyan-500 group-hover:text-white rounded-xl transition-colors">
-                {item.icon}
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-slate-200 group-hover:text-white transition-colors">
-                  {item.name}
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono">
-                  {item.defaultDim.width}m × {item.defaultDim.depth}m × {item.defaultDim.height}m
-                </div>
-              </div>
-            </div>
-            <button
-              className="p-1.5 text-slate-500 group-hover:text-cyan-400 group-hover:bg-cyan-500/10 rounded-lg transition-colors"
-              title="Add to Scene"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
+        {filteredItems.length === 0 ? (
+          <div className="py-8 text-center text-slate-500 text-xs">
+            No furniture matching "{searchQuery}"
           </div>
-        ))}
+        ) : (
+          filteredItems.map((item) => (
+            <div
+              key={item.name}
+              onClick={() => handleAddItem(item)}
+              className="group flex items-center justify-between p-3 vision-card hover:bg-cyan-600/15 hover:border-cyan-500/35 rounded-2xl cursor-pointer transition-all active:scale-[0.98]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-slate-900/80 text-cyan-400 group-hover:bg-cyan-500 group-hover:text-white rounded-xl transition-colors shadow-inner">
+                  {item.icon}
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-200 group-hover:text-white transition-colors font-display">
+                    {item.name}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono-digits">
+                    {item.defaultDim.width}m × {item.defaultDim.depth}m × {item.defaultDim.height}m
+                  </div>
+                </div>
+              </div>
+              <button
+                className="p-1.5 text-slate-500 group-hover:text-cyan-400 group-hover:bg-cyan-500/15 rounded-lg transition-colors"
+                title="Add to Scene"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

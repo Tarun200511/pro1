@@ -136,18 +136,18 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4 bg-black/75 backdrop-blur-md">
-      <div className="relative w-full max-w-2xl max-h-[88vh] overflow-y-auto bg-slate-900/95 backdrop-blur-2xl border border-white/15 rounded-3xl p-5 md:p-6 shadow-2xl text-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-2xl max-h-[88vh] overflow-y-auto vision-panel border border-white/15 rounded-3xl p-5 md:p-7 shadow-2xl text-white backdrop-blur-3xl">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-cyan-500/20 text-cyan-400 rounded-2xl border border-cyan-500/30">
+            <div className="p-2.5 bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 text-cyan-400 rounded-2xl border border-cyan-500/30 vision-glow-cyan">
               <Download className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold tracking-tight">Cross-Platform Export & Vault</h3>
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-full">
+                <h3 className="text-lg font-bold tracking-tight font-display">Cross-Platform Export & Vault</h3>
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-full font-mono-digits">
                   Multi-OS
                 </span>
               </div>
@@ -156,34 +156,49 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-2 mt-4 p-1 bg-white/5 rounded-2xl border border-white/5">
+        <div className="flex items-center gap-1.5 mt-4 p-1 vision-pill rounded-2xl">
           <button
-            onClick={() => setActiveTab('export')}
+            onClick={() => {
+              triggerHaptic('selection');
+              setActiveTab('export');
+            }}
             className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === 'export' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              activeTab === 'export'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md vision-glow-cyan font-bold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             Export Formats
           </button>
           <button
-            onClick={() => setActiveTab('vault')}
+            onClick={() => {
+              triggerHaptic('selection');
+              setActiveTab('vault');
+            }}
             className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === 'vault' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              activeTab === 'vault'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md vision-glow-cyan font-bold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
-            Offline Vault ({savedRooms.length})
+            Room Vault ({savedRooms.length})
           </button>
           <button
-            onClick={() => setActiveTab('import')}
+            onClick={() => {
+              triggerHaptic('selection');
+              setActiveTab('import');
+            }}
             className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === 'import' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              activeTab === 'import'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md vision-glow-cyan font-bold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             Import JSON

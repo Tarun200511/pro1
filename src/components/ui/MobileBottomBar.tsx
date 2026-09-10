@@ -69,7 +69,7 @@ export const MobileBottomBar: React.FC<Props> = ({
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex flex-col items-center pointer-events-none">
       {/* Floating Contextual Quick Actions Bar (Undo, Redo, Snap, and Selection Actions) */}
-      <div className="pointer-events-auto mb-2.5 flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/90 backdrop-blur-2xl border border-white/15 rounded-full shadow-2xl shadow-black/60">
+      <div className="pointer-events-auto mb-2 flex items-center gap-1.5 px-3.5 py-1.5 vision-panel rounded-full shadow-2xl border border-white/15">
         <button
           onClick={() => {
             triggerHaptic('light');
@@ -77,7 +77,7 @@ export const MobileBottomBar: React.FC<Props> = ({
           }}
           disabled={!canUndo}
           aria-label="Undo"
-          className="p-2 rounded-full text-slate-300 disabled:opacity-30 disabled:pointer-events-none hover:text-white hover:bg-white/10 active:scale-95 transition-all"
+          className="p-2 rounded-full text-slate-300 disabled:opacity-30 disabled:pointer-events-none hover:text-white hover:bg-white/10 active:scale-90 transition-all"
         >
           <Undo2 className="w-4 h-4" />
         </button>
@@ -89,7 +89,7 @@ export const MobileBottomBar: React.FC<Props> = ({
           }}
           disabled={!canRedo}
           aria-label="Redo"
-          className="p-2 rounded-full text-slate-300 disabled:opacity-30 disabled:pointer-events-none hover:text-white hover:bg-white/10 active:scale-95 transition-all"
+          className="p-2 rounded-full text-slate-300 disabled:opacity-30 disabled:pointer-events-none hover:text-white hover:bg-white/10 active:scale-90 transition-all"
         >
           <Redo2 className="w-4 h-4" />
         </button>
@@ -102,8 +102,8 @@ export const MobileBottomBar: React.FC<Props> = ({
             toggleGridSnap();
           }}
           aria-label="Grid Snap"
-          className={`p-2 rounded-full active:scale-95 transition-all ${
-            gridSnap ? 'text-blue-400 bg-blue-500/20' : 'text-slate-400 hover:text-white'
+          className={`p-2 rounded-full active:scale-90 transition-all ${
+            gridSnap ? 'text-cyan-400 bg-cyan-500/20' : 'text-slate-400 hover:text-white'
           }`}
         >
           <Grid className="w-4 h-4" />
@@ -118,7 +118,7 @@ export const MobileBottomBar: React.FC<Props> = ({
               <button
                 onClick={handleDuplicate}
                 aria-label="Duplicate Selected Object"
-                className="p-2 rounded-full text-cyan-400 hover:bg-cyan-500/15 active:scale-95 transition-all"
+                className="p-2 rounded-full text-cyan-400 hover:bg-cyan-500/15 active:scale-90 transition-all"
               >
                 <Copy className="w-4 h-4" />
               </button>
@@ -127,7 +127,7 @@ export const MobileBottomBar: React.FC<Props> = ({
             <button
               onClick={handleDelete}
               aria-label="Delete Selected"
-              className="p-2 rounded-full text-red-400 hover:bg-red-500/15 active:scale-95 transition-all"
+              className="p-2 rounded-full text-red-400 hover:bg-red-500/15 active:scale-90 transition-all"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -135,8 +135,8 @@ export const MobileBottomBar: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Main Bottom Glass Dock */}
-      <nav className="pointer-events-auto w-full bg-slate-950/90 backdrop-blur-2xl border-t border-white/10 px-3 pt-2 pb-[calc(var(--sab)+0.6rem)]">
+      {/* Main Bottom VisionOS Glass Dock */}
+      <nav className="pointer-events-auto w-full vision-panel rounded-t-3xl border-t border-white/15 px-3 pt-2.5 pb-[calc(var(--sab)+0.6rem)] shadow-2xl backdrop-blur-3xl">
         <div className="max-w-md mx-auto flex items-center justify-around">
           {/* 2D / 3D Mode Toggle */}
           <button
@@ -145,16 +145,16 @@ export const MobileBottomBar: React.FC<Props> = ({
               triggerHaptic('selection');
               setViewMode(viewMode === '3d' ? '2d' : '3d');
             }}
-            className="flex flex-col items-center gap-1 py-1 px-3 rounded-2xl active:scale-95 transition-all text-slate-400 hover:text-white"
+            className="flex flex-col items-center gap-1 py-1 px-3 rounded-2xl active:scale-90 transition-all text-slate-400 hover:text-white"
           >
             <div
-              className={`p-1.5 rounded-xl transition-all ${
+              className={`p-2 rounded-xl transition-all ${
                 viewMode === '3d'
-                  ? 'bg-blue-600/30 text-blue-400 border border-blue-500/30'
-                  : 'bg-indigo-600/30 text-indigo-400 border border-indigo-500/30'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/40'
+                  : 'bg-white/5 text-slate-300'
               }`}
             >
-              {viewMode === '3d' ? <Box className="w-5 h-5" /> : <Compass className="w-5 h-5" />}
+              {viewMode === '3d' ? <Box className="w-4 h-4" /> : <Compass className="w-4 h-4" />}
             </div>
             <span className="text-[10px] font-semibold tracking-tight">
               {viewMode === '3d' ? '3D View' : '2D Plan'}
@@ -168,16 +168,16 @@ export const MobileBottomBar: React.FC<Props> = ({
               triggerHaptic('selection');
               setActiveTool(activeTool === 'wall' ? 'select' : 'wall');
             }}
-            className="flex flex-col items-center gap-1 py-1 px-3 rounded-2xl active:scale-95 transition-all text-slate-400 hover:text-white"
+            className="flex flex-col items-center gap-1 py-1 px-3 rounded-2xl active:scale-90 transition-all text-slate-400 hover:text-white"
           >
             <div
-              className={`p-1.5 rounded-xl transition-all ${
+              className={`p-2 rounded-xl transition-all ${
                 activeTool === 'wall'
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/40'
                   : 'bg-white/5 text-slate-300'
               }`}
             >
-              {activeTool === 'wall' ? <PenTool className="w-5 h-5" /> : <MousePointer2 className="w-5 h-5" />}
+              {activeTool === 'wall' ? <PenTool className="w-4 h-4" /> : <MousePointer2 className="w-4 h-4" />}
             </div>
             <span className="text-[10px] font-semibold tracking-tight">
               {activeTool === 'wall' ? 'Drawing' : 'Select'}
@@ -191,15 +191,15 @@ export const MobileBottomBar: React.FC<Props> = ({
               triggerHaptic('heavy');
               openCameraScanner();
             }}
-            className="flex flex-col items-center -mt-6 group active:scale-90 transition-all z-10"
+            className="flex flex-col items-center -mt-7 group active:scale-90 transition-all z-10"
             title="On-Spot Camera Capture"
           >
-            <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-cyan-400 via-blue-600 to-indigo-600 p-0.5 shadow-2xl shadow-cyan-500/50 flex items-center justify-center animate-pulse hover:shadow-cyan-400/80">
+            <div className="w-15 h-15 rounded-full bg-gradient-to-tr from-cyan-400 via-blue-600 to-indigo-600 p-0.5 shadow-2xl vision-glow-cyan flex items-center justify-center animate-pulse hover:shadow-cyan-400/80">
               <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-cyan-400 group-hover:text-white transition-colors">
                 <Camera className="w-6 h-6" />
               </div>
             </div>
-            <span className="text-[10px] font-bold text-cyan-400 mt-1 uppercase tracking-wider drop-shadow">
+            <span className="text-[10px] font-extrabold text-cyan-400 mt-1 uppercase tracking-wider drop-shadow font-display">
               Capture
             </span>
           </button>
@@ -208,19 +208,19 @@ export const MobileBottomBar: React.FC<Props> = ({
           <button
             id="mobile-btn-furniture"
             onClick={() => {
-              triggerHaptic('light');
+              triggerHaptic('medium');
               onToggleFurnitureDrawer();
             }}
-            className="flex flex-col items-center gap-1 py-1 px-3 rounded-2xl active:scale-95 transition-all text-slate-400 hover:text-white"
+            className="flex flex-col items-center gap-1 py-1 px-3 rounded-2xl active:scale-90 transition-all text-slate-400 hover:text-white"
           >
             <div
-              className={`p-1.5 rounded-xl transition-all ${
+              className={`relative p-2 rounded-xl transition-all ${
                 isFurnitureDrawerOpen
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/40'
+                  ? 'bg-gradient-to-tr from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/40'
                   : 'bg-white/5 text-slate-300'
               }`}
             >
-              <Armchair className="w-5 h-5" />
+              <Armchair className="w-4 h-4" />
             </div>
             <span className="text-[10px] font-semibold tracking-tight">Catalog</span>
           </button>
@@ -232,25 +232,25 @@ export const MobileBottomBar: React.FC<Props> = ({
               triggerHaptic('light');
               onToggleInspector();
             }}
-            className="relative flex flex-col items-center gap-1 py-1 px-3 rounded-2xl active:scale-95 transition-all text-slate-400 hover:text-white"
+            className="relative flex flex-col items-center gap-1 py-1 px-3 rounded-2xl active:scale-90 transition-all text-slate-400 hover:text-white"
           >
             <div
-              className={`p-1.5 rounded-xl transition-all ${
+              className={`p-2 rounded-xl transition-all ${
                 isInspectorOpen
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/40'
                   : 'bg-white/5 text-slate-300'
               }`}
             >
-              <Sliders className="w-5 h-5" />
+              <Sliders className="w-4 h-4" />
             </div>
             <span className="text-[10px] font-semibold tracking-tight">Specs</span>
 
             {/* Pulsing indicator when something is selected */}
             {selectedId && !isInspectorOpen && (
-              <span className="absolute top-1 right-3 w-2.5 h-2.5 bg-blue-500 rounded-full animate-ping" />
+              <span className="absolute top-1 right-3 w-2.5 h-2.5 bg-cyan-400 rounded-full animate-ping" />
             )}
             {selectedId && !isInspectorOpen && (
-              <span className="absolute top-1 right-3 w-2.5 h-2.5 bg-blue-500 rounded-full" />
+              <span className="absolute top-1 right-3 w-2.5 h-2.5 bg-cyan-400 rounded-full" />
             )}
           </button>
         </div>

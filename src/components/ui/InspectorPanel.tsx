@@ -77,9 +77,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
       id="inspector-panel"
       className={`${
         isOpenOnMobile
-          ? 'fixed inset-x-0 bottom-0 z-50 max-h-[82vh] rounded-t-3xl border-t border-white/20 p-5 pb-[calc(var(--sab)+1.5rem)] shadow-2xl block'
+          ? 'fixed inset-x-0 bottom-0 z-50 max-h-[85vh] rounded-t-3xl border-t border-white/20 p-5 pb-[calc(var(--sab)+1.5rem)] shadow-2xl block'
           : 'hidden'
-      } md:block md:static md:w-80 md:max-h-[calc(100vh-6rem)] overflow-y-auto bg-slate-900/90 backdrop-blur-2xl md:border md:border-white/10 md:rounded-3xl md:p-5 md:shadow-2xl text-white select-none transition-all`}
+      } md:block md:static md:w-88 md:max-h-[calc(100vh-6.5rem)] overflow-y-auto vision-panel md:border md:border-white/15 md:rounded-3xl md:p-5 md:shadow-2xl text-white select-none transition-all backdrop-blur-3xl`}
     >
       {/* Mobile Top Sheet Grab Handle & Dismiss Bar */}
       <div className="md:hidden flex flex-col items-center pb-3">

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { useRoomStore } from '../../store/useRoomStore';
 import { ROOM_PRESETS } from '../../utils/presets';
-import { playLidarPulse, playMeshDetect, playScanComplete } from '../../utils/sound';
+import { playLidarPulse, playMeshDetect, playScanComplete, triggerHaptic } from '../../utils/sound';
 import { Scan, Sparkles, X, ChevronRight, Activity, Layers, Radio, Camera } from 'lucide-react';
 import { CameraDimensionScanner } from './CameraDimensionScanner';
 
@@ -143,32 +143,35 @@ export const ScannerOverlay: React.FC = () => {
       {/* Top Bar Trigger Button if modal closed */}
       <button
         id="btn-scan-room"
-        onClick={() => setIsModalOpen(true)}
-        className="flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-[11px] md:text-xs font-semibold rounded-xl shadow-lg shadow-blue-500/25 transition-all active:scale-95"
+        onClick={() => {
+          triggerHaptic('light');
+          setIsModalOpen(true);
+        }}
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[11px] sm:text-xs font-semibold rounded-full transition-all active:scale-95"
+        title="Simulated Room Scanner Presets"
       >
-        <Scan className="w-3.5 h-3.5 md:w-4 md:h-4 animate-pulse" />
-        <span className="hidden sm:inline">Scan Room</span>
-        <span className="sm:hidden">Scan</span>
+        <Scan className="w-3.5 h-3.5 text-slate-300" />
+        <span className="hidden sm:inline">Presets</span>
       </button>
 
       {/* Preset Selector Modal */}
       {isModalOpen && !isScanning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-          <div className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto bg-slate-900/95 backdrop-blur-2xl border border-white/15 rounded-3xl p-5 md:p-6 shadow-2xl text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto vision-panel border border-white/15 rounded-3xl p-5 md:p-7 shadow-2xl text-white backdrop-blur-3xl">
             {/* Header */}
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-2xl border border-blue-500/30">
+                <div className="p-2.5 bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 text-cyan-400 rounded-2xl border border-cyan-500/30 vision-glow-cyan">
                   <Scan className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold tracking-tight">Simulated Room Scanner</h3>
+                  <h3 className="text-lg font-bold tracking-tight font-display">Simulated Room Scanner</h3>
                   <p className="text-xs text-slate-400">Powered by Apple RoomPlan ARKit simulation</p>
                 </div>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
